@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rapid KL Bus Live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --brand:#d7192d; --ink:#1b1b1f; --muted:#6b6b76; --bg:#ffffff; --line:#e4e4ea; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); }
+  #app { display:flex; flex-direction:column; height:100%; }
+  header { padding:calc(env(safe-area-inset-top) + 10px) 12px 10px; background:var(--bg); border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:8px; align-items:center; z-index:1000; }
+  h1 { font-size:16px; margin:0 8px 0 0; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  h1 .dot { width:9px; height:9px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 0 rgba(215,25,45,.6); animation:pulse 2s infinite; }
+  @keyframes pulse { 70% { box-shadow:0 0 0 8px rgba(215,25,45,0); } 100% { box-shadow:0 0 0 0 rgba(215,25,45,0); } }
+  .controls { display:flex; gap:8px; flex:1; min-width:260px; }
+  select, input { font:inherit; font-size:15px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); min-width:0; }
+  #route { flex:1; }
+  #status { font-size:12px; color:var(--muted); width:100%; display:flex; justify-content:space-between; gap:8px; }
+  #status .err { color:var(--brand); }
+  #map { flex:1; }
+  .bus { position:relative; }
+  .bus .pin { width:30px; height:30px; border-radius:50%; background:var(--brand); border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; color:#fff; font:700 9px/1 system-ui,sans-serif; letter-spacing:-.2px; overflow:hidden; }
+  .bus.dim .pin { background:#8a8a95; }
+  .bus .arrow { position:absolute; left:50%; top:50%; width:0; height:0; margin-left:-5px; margin-top:-24px; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:8px solid var(--brand); transform-origin:5px 24px; }
+  .bus.dim .arrow { border-bottom-color:#8a8a95; }
+  .leaflet-popup-content { font-size:13px; line-height:1.45; margin:10px 12px; }
+  .leaflet-popup-content b { font-size:15px; }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1><span class="dot"></span>Rapid KL Bus Live</h1>
+    <div class="controls">
+      <select id="category" aria-label="Service">
+        <option value="rapid-bus-kl">Rapid KL bus</option>
+        <option value="rapid-bus-mrtfeeder">MRT feeder</option>
+      </select>
+      <select id="route" aria-label="Bus route"><option value="">All routes</option></select>
+    </div>
+    <div id="status"><span id="msg">Loading…</span><span id="updated"></span></div>
+  </header>
+  <div id="map"></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+const map = L.map('map', { zoomControl: true }).setView([3.139, 101.6869], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '&copy; OpenStreetMap contributors · Data: Prasarana via data.gov.my',
+}).addTo(map);
+
+const markers = new Map();
+let routeNames = {};
+let lastBuses = [];
+let fitPending = true;
+let timer = null;
+
+const catSel = $('category'), routeSel = $('route');
+catSel.value = store.get('cat') || 'rapid-bus-kl';
+let selectedRoute = store.get('route:' + catSel.value) || '';
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function shortOf(id) { return (routeNames[id] && routeNames[id].short) || id || '?'; }
+function ago(ts) {
+  if (!ts) return '';
+  const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  return s < 60 ? s + 's ago' : Math.round(s / 60) + ' min ago';
+}
+
+function icon(bus, dim) {
+  const rot = bus.bearing != null ? `<div class="arrow" style="transform:rotate(${bus.bearing}deg)"></div>` : '';
+  return L.divIcon({
+    className: 'bus' + (dim ? ' dim' : ''),
+    html: `${rot}<div class="pin">${esc(shortOf(bus.route)).slice(0, 5)}</div>`,
+    iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14],
+  });
+}
+
+function popup(bus) {
+  const r = routeNames[bus.route];
+  return `<b>${esc(shortOf(bus.route))}</b>${r && r.long ? `<br>${esc(r.long)}` : ''}
+    <br>Plate: <b style="font-size:13px">${esc(bus.plate || bus.id)}</b>
+    ${bus.speedKmh != null ? `<br>Speed: ${bus.speedKmh} km/h` : ''}
+    <br><span class="muted">Updated ${esc(ago(bus.ts))}</span>`;
+}
+
+function buildRouteList(buses) {
+  const counts = {};
+  for (const b of buses) if (b.route) counts[b.route] = (counts[b.route] || 0) + 1;
+  const ids = Object.keys(counts).sort((a, b) => shortOf(a).localeCompare(shortOf(b), undefined, { numeric: true }));
+  if (selectedRoute && !counts[selectedRoute]) ids.unshift(selectedRoute);
+  routeSel.innerHTML = `<option value="">All routes (${buses.length} buses)</option>` + ids.map((id) => {
+    const r = routeNames[id];
+    const label = shortOf(id) + (r && r.long ? ' – ' + r.long : '') + ` (${counts[id] || 0})`;
+    return `<option value="${esc(id)}">${esc(label)}</option>`;
+  }).join('');
+  routeSel.value = selectedRoute;
+}
+
+function render() {
+  const shown = selectedRoute ? lastBuses.filter((b) => b.route === selectedRoute) : lastBuses;
+  const keep = new Set();
+  for (const b of shown) {
+    const key = b.id + '|' + b.route;
+    keep.add(key);
+    let m = markers.get(key);
+    if (!m) {
+      m = L.marker([b.lat, b.lon], { icon: icon(b) }).addTo(map);
+      markers.set(key, m);
+    } else {
+      m.setLatLng([b.lat, b.lon]);
+      m.setIcon(icon(b));
+    }
+    m.bindPopup(popup(b));
+  }
+  for (const [key, m] of markers) if (!keep.has(key)) { map.removeLayer(m); markers.delete(key); }
+
+  if (fitPending && shown.length) {
+    const bounds = L.latLngBounds(shown.map((b) => [b.lat, b.lon]));
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    fitPending = false;
+  }
+  $('msg').innerHTML = selectedRoute
+    ? (shown.length ? `${shown.length} bus${shown.length > 1 ? 'es' : ''} on ${esc(shortOf(selectedRoute))}` : `<span class="err">No live buses on ${esc(shortOf(selectedRoute))} right now</span>`)
+    : `${shown.length} buses live`;
+}
+
+async function loadRoutes() {
+  try {
+    const r = await fetch('/api/routes?category=' + catSel.value);
+    if (r.ok) routeNames = (await r.json()).routes || {};
+  } catch {}
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/buses?category=' + catSel.value, { cache: 'no-store' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Feed error');
+    lastBuses = data.buses;
+    buildRouteList(lastBuses);
+    render();
+    const t = data.feedTimestamp ? new Date(data.feedTimestamp * 1000) : new Date();
+    $('updated').textContent = 'Feed ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · refreshes every 30s';
+  } catch (e) {
+    $('msg').innerHTML = `<span class="err">Couldn't load live feed: ${esc(e.message)}. Retrying…</span>`;
+  }
+}
+
+async function start() {
+  clearInterval(timer);
+  for (const m of markers.values()) map.removeLayer(m);
+  markers.clear();
+  routeNames = {};
+  fitPending = true;
+  $('msg').textContent = 'Loading…';
+  await Promise.all([loadRoutes(), refresh()]);
+  buildRouteList(lastBuses); render();
+  timer = setInterval(refresh, 30000);
+}
+
+catSel.addEventListener('change', () => {
+  store.set('cat', catSel.value);
+  selectedRoute = store.get('route:' + catSel.value) || '';
+  lastBuses = [];
+  start();
+});
+routeSel.addEventListener('change', () => {
+  selectedRoute = routeSel.value;
+  store.set('route:' + catSel.value, selectedRoute);
+  fitPending = true;
+  render();
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+
+start();
+</script>
+</body>
+</html>
