@@ -1,5 +1,5 @@
 // Probe the MyRapid Bus Kiosk for one route: ?route=590   (or ?list=1 for the route list)
-const { listRoutes, findRoute, routeMeta, liveSnapshot } = require('./_lib/kiosk');
+const { listRoutes, findRoute, routeMeta, liveSnapshot, inspect } = require('./_lib/kiosk');
 
 const trim = (v, n = 600) => { const s = JSON.stringify(v); return s && s.length > n ? s.slice(0, n) + '…' : v; };
 function shape(p) {
@@ -15,6 +15,11 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const t0 = Date.now();
   try {
+    if (req.query.inspect) {
+      const path = String(req.query.inspect);
+      const url = path.startsWith('/') ? 'https://myrapidbus.prasarana.com.my' + path : 'https://myrapidbus.prasarana.com.my/kiosk';
+      return res.status(200).json(await inspect(url));
+    }
     if (req.query.list) {
       const list = await listRoutes();
       return res.status(200).json({ count: list.length, routes: list.slice(0, 400) });

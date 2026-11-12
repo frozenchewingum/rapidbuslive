@@ -12,8 +12,10 @@ const HEADERS = {
 };
 
 let jar = '';
+let lastResp = null;
 async function getPage(url) {
   const r = await fetch(url, { headers: { ...HEADERS, ...(jar ? { Cookie: jar } : {}) }, redirect: 'follow' });
+  lastResp = { status: r.status, url: r.url, server: r.headers.get('server'), type: r.headers.get('content-type') };
   const set = typeof r.headers.getSetCookie === 'function' ? r.headers.getSetCookie() : [];
   if (set.length) {
     const cur = new Map(jar.split('; ').filter(Boolean).map((c) => [c.split('=')[0], c]));
@@ -125,4 +127,24 @@ async function liveSnapshot(meta, opts) {
   return r;
 }
 
-module.exports = { listRoutes, findRoute, routeMeta, liveSnapshot };
+// Describe what a page actually contains (for when the expected markup isn't there).
+async function inspect(url = KIOSK) {
+  const html = await getPage(url);
+  const around = (re, n = 220, max = 8) => [...html.matchAll(re)].slice(0, max).map((m) => html.slice(Math.max(0, m.index - 60), m.index + n).replace(/\s+/g, ' '));
+  return {
+    response: lastResp,
+    cookies: jar.split('; ').filter(Boolean).map((c) => c.split('=')[0]),
+    length: html.length,
+    title: (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1],
+    selects: [...html.matchAll(/<select[^>]*>/gi)].map((m) => m[0]).slice(0, 10),
+    optionCount: (html.match(/<option/gi) || []).length,
+    scriptSrcs: [...html.matchAll(/<script[^>]*src=["']([^"']+)["']/gi)].map((m) => m[1]).slice(0, 25),
+    urlsInPage: [...new Set([...html.matchAll(/["'`]((?:https?:)?\/\/[^"'`\s]+|\/[A-Za-z0-9_\-\/]+(?:\?[^"'`\s]*)?)["'`]/g)].map((m) => m[1]))].filter((u) => !/\.(png|jpe?g|svg|css|ico|woff2?)/.test(u)).slice(0, 60),
+    routeMentions: around(/route/gi),
+    socketMentions: around(/socket|io\.connect/gi),
+    ajaxMentions: around(/\$\.(ajax|get|post|getJSON)|fetch\(|axios/gi, 300),
+    head: html.slice(0, 1500),
+  };
+}
+
+module.exports = { listRoutes, findRoute, routeMeta, liveSnapshot, inspect };
