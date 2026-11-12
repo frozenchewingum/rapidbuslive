@@ -343,6 +343,7 @@ async function refresh() {
     if (!data.buses || (!data.buses.length && data.errors && data.errors.length)) throw new Error();
     clockOffset = data.now - Date.now() / 1000;
     buses = data.buses;
+    if (sel) await mergeRouteLive(sel.k);
     busById = new Map(buses.map((b) => [b.id, b]));
     lastUpdated = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     renderBuses();
@@ -355,6 +356,20 @@ async function refresh() {
     updateSummary();
     if (!buses.length) toast('Live bus data is temporarily unavailable. We’ll keep trying.');
   }
+}
+// For the selected route, swap in the merged open-feed + MyRapid Kiosk list (adds buses missing from the open feed).
+let routeLiveInfo = null;
+async function mergeRouteLive(k) {
+  try {
+    const r = await fetch('/api/live?k=' + encodeURIComponent(k), { cache: 'no-store' });
+    if (!r.ok) return false;
+    const data = await r.json();
+    if (!sel || sel.k !== k || !Array.isArray(data.buses)) return false;
+    buses = buses.filter((b) => b.rk !== k).concat(data.buses);
+    busById = new Map(buses.map((b) => [b.id, b]));
+    routeLiveInfo = { k, kiosk: data.kiosk };
+    return true;
+  } catch { return false; }
 }
 async function loadCatalog() {
   try {
@@ -452,6 +467,7 @@ async function selectRoute(k, dir = 'all') {
   renderRouteBar(); renderBuses(); renderFavs();
   const pts = buses.filter((b) => b.rk === k).map((b) => [b.lat, b.lon]);
   if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 15 });
+  mergeRouteLive(k).then((ok) => { if (ok && sel && sel.k === k) { renderBuses(); if (sheetState) renderSheet(); } });
   try {
     const res = await fetch('/api/routes?k=' + encodeURIComponent(k));
     if (!res.ok) throw new Error();
@@ -611,6 +627,7 @@ function renderBusSheet(st) {
       <dt>Status</dt><dd>${esc(status)}</dd>
       <dt>Location</dt><dd>Updated ${esc(ageText(b.ts))}</dd>
       <dt>Bus</dt><dd>${esc(b.plate || b.id)}</dd>
+      <dt>Source</dt><dd style="font-weight:500">${b.src === 'kiosk' ? 'MyRapid live' : b.src === 'both' ? 'MyRapid live + open data' : 'Open data (data.gov.my)'}</dd>
     </dl>
     <div class="sbtns">
       <button class="btn${follow === b.id ? ' on' : ''}" id="followBtn">${follow === b.id ? '✓ Following bus' : 'Follow this bus'}</button>
