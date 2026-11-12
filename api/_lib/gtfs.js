@@ -226,4 +226,92 @@ async function realtime(cat) {
   return { ts: (feed.header && feed.header.ts) || null, entities: feed.entities || [] };
 }
 
-module.exports = { CATS, base, full, realtime, eachRow, unzip };
+
+/* ---------- labelled live buses (cached briefly per instance) ---------- */
+const MAX_AGE = 20 * 60;
+let liveCache = null;
+function liveBuses() {
+  if (liveCache && Date.now() - liveCache.at < 15000) return liveCache.p;
+  const p = (async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const errors = [];
+    const results = await Promise.all(CATS.map(async (cat) => {
+      const [rt, st] = await Promise.allSettled([realtime(cat), base(cat)]);
+      if (rt.status === 'rejected') { errors.push(String(rt.reason.message || rt.reason)); return { buses: [] }; }
+      const s = st.status === 'fulfilled' ? st.value : null;
+      if (!s) errors.push(String(st.reason.message || st.reason));
+      const buses = [];
+      for (const e of rt.value.entities) {
+        const vp = e.vp;
+        if (!vp || !vp.pos || !vp.pos.lat) continue;
+        if (vp.ts && now - vp.ts > MAX_AGE) continue;
+        const trip = vp.trip || {};
+        let routeId = trip.routeId || '', d = null;
+        const t = s && trip.tripId && s.trips.get(trip.tripId);
+        if (t) { routeId = routeId || t.r; d = t.d; }
+        if (s && routeId && !s.routes.has(routeId)) routeId = s.byShort.get(routeId.toUpperCase()) || routeId;
+        if (d == null && trip.dir != null) d = trip.dir === 1 ? 1 : 0;
+        const route = s && s.routes.get(routeId);
+        if (d == null && route && route.dirs.size === 1) d = [...route.dirs.keys()][0];
+        const dir = route && d != null ? route.dirs.get(d) : null;
+        const veh = vp.veh || {};
+        buses.push({
+          id: veh.id || veh.label || e.id,
+          plate: veh.plate || veh.label || '',
+          rk: `${cat}|${routeId}`,
+          route: route ? route.short : routeId,
+          d,
+          to: dir ? dir.headsign : '',
+          lat: +vp.pos.lat.toFixed(6),
+          lon: +vp.pos.lon.toFixed(6),
+          bearing: vp.pos.bearing != null ? Math.round(vp.pos.bearing) : null,
+          kmh: vp.pos.speed != null ? Math.round(vp.pos.speed * 3.6) : null,
+          ts: vp.ts || rt.value.ts || null,
+        });
+      }
+      return { buses, ts: rt.value.ts };
+    }));
+    return {
+      now, errors,
+      feedTs: Math.max(0, ...results.map((r) => r.ts || 0)) || null,
+      buses: results.flatMap((r) => r.buses),
+    };
+  })();
+  liveCache = { at: Date.now(), p };
+  p.catch(() => { liveCache = null; });
+  return p;
+}
+
+/* ---------- geometry: distance along a route line ---------- */
+const M_LAT = 110574, M_LON = 111320 * Math.cos(3.1 * Math.PI / 180);
+const xy = (lat, lon) => [lon * M_LON, lat * M_LAT];
+function geom(dir) {
+  if (dir._g) return dir._g;
+  const pts = (dir.line || []).map(([la, lo]) => xy(la, lo));
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const g = { pts, cum };
+  // stop positions along the line, searched forward so loop routes stay in order
+  let from = 0;
+  g.stopAlong = (dir.stops || []).map((st) => {
+    const pr = project(g, st.lat, st.lon, from);
+    from = pr.seg;
+    return pr.along;
+  });
+  return (dir._g = g);
+}
+function project(g, lat, lon, from = 0) {
+  const [x, y] = xy(lat, lon);
+  let best = { dist: Infinity, along: 0, seg: from };
+  for (let i = Math.max(1, from); i < g.pts.length; i++) {
+    const [ax, ay] = g.pts[i - 1], [bx, by] = g.pts[i];
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)) : 0;
+    const px = ax + t * dx, py = ay + t * dy;
+    const dist = Math.hypot(x - px, y - py);
+    if (dist < best.dist) best = { dist, along: g.cum[i - 1] + t * Math.sqrt(L2), seg: i };
+  }
+  return best;
+}
+
+module.exports = { CATS, base, full, realtime, liveBuses, geom, project, eachRow, unzip };

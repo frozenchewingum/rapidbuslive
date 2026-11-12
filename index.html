@@ -3,64 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#d7192d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bus Live">
 <title>Rapid KL Bus Live</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <style>
   :root {
-    --red:#d7192d; --blue:#1f5fd1; --stale:#9a9aa3;
+    --red:#d7192d; --blue:#1f5fd1; --green:#0f8a5f; --stale:#9a9aa3; --amber:#9a5b00; --amberbg:#fff6e5;
     --ink:#17171c; --muted:#666672; --line:#e3e3ea; --soft:#f4f4f7; --bg:#fff;
+    --safe-b: env(safe-area-inset-bottom);
   }
-  * { box-sizing:border-box; }
-  html,body { margin:0; height:100%; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); -webkit-text-size-adjust:100%; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); -webkit-text-size-adjust:100%; overscroll-behavior:none; }
   button { font:inherit; color:inherit; cursor:pointer; }
   #app { display:flex; flex-direction:column; height:100%; }
   #map { flex:1; min-height:0; }
 
-  /* top panel */
+  /* ----- top panel ----- */
   .top { position:relative; z-index:1000; background:var(--bg); border-bottom:1px solid var(--line);
          padding:calc(env(safe-area-inset-top) + 10px) 12px 10px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
   .titlebar { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
   h1 { font-size:17px; margin:0; display:flex; align-items:center; gap:7px; }
   .live { width:9px; height:9px; border-radius:50%; background:var(--red); animation:pulse 2s infinite; }
   @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(215,25,45,.55); } 70% { box-shadow:0 0 0 8px rgba(215,25,45,0); } 100% { box-shadow:0 0 0 0 rgba(215,25,45,0); } }
-  #summary { font-size:12px; color:var(--muted); text-align:right; }
+  #summary { font-size:12px; color:var(--muted); text-align:right; line-height:1.35; }
   .searchwrap { position:relative; }
-  #q { width:100%; font-size:16px; padding:11px 38px 11px 38px; border:1px solid var(--line); border-radius:12px; background:var(--soft); outline:none; }
+  #q { width:100%; font-size:16px; padding:11px 38px; border:1px solid var(--line); border-radius:12px; background:var(--soft); outline:none; -webkit-appearance:none; }
   #q:focus { background:#fff; border-color:#b9b9c6; }
+  #q::-webkit-search-cancel-button { display:none; }
   .searchwrap .ico { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none; }
-  #clearQ { position:absolute; right:6px; top:50%; transform:translateY(-50%); border:0; background:none; font-size:20px; color:var(--muted); width:32px; height:32px; display:none; }
+  #clearQ { position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:none; font-size:22px; color:var(--muted); width:36px; height:36px; display:none; }
   #results { position:absolute; left:0; right:0; top:calc(100% + 6px); background:#fff; border:1px solid var(--line); border-radius:12px;
              box-shadow:0 8px 24px rgba(0,0,0,.12); max-height:60vh; overflow:auto; display:none; }
-  #results .sec { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:10px 14px 4px; }
-  #results .item { display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0; background:none; padding:10px 14px; }
-  #results .item:hover, #results .item:focus { background:var(--soft); outline:none; }
-  #results .none { padding:14px; color:var(--muted); font-size:14px; }
-  .badge { flex:none; min-width:46px; padding:4px 7px; border-radius:7px; background:var(--red); color:#fff; font-weight:700; font-size:13px; text-align:center; }
-  .badge.feeder { background:#0f8a5f; }
-  .itxt { min-width:0; }
+  .sec { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:10px 14px 4px; }
+  .item { display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0; background:none; padding:10px 14px; min-height:52px; }
+  .item:hover, .item:focus-visible { background:var(--soft); outline:none; }
+  .none { padding:14px; color:var(--muted); font-size:14px; line-height:1.45; }
+  .badge { flex:none; min-width:46px; padding:4px 7px; border-radius:7px; background:var(--red); color:#fff; font-weight:700; font-size:13px; text-align:center; border:0; }
+  .badge.feeder { background:var(--green); }
+  .badge.stop { background:#fff; color:var(--ink); border:1px solid var(--line); font-weight:600; }
+  .itxt { min-width:0; flex:1; }
   .itxt .a { font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .itxt .b { font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .count { margin-left:auto; flex:none; font-size:12px; color:var(--muted); }
+  .count { margin-left:auto; flex:none; font-size:12px; color:var(--muted); text-align:right; }
   .count.on { color:var(--red); font-weight:600; }
+
+  /* favourites */
+  #favs { display:none; gap:6px; margin-top:8px; overflow-x:auto; scrollbar-width:none; }
+  #favs::-webkit-scrollbar, #dirs::-webkit-scrollbar { display:none; }
+  #favs button { flex:none; border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 11px; font-size:13.5px; white-space:nowrap; display:flex; align-items:center; gap:5px; }
+  #favs .star { color:#e3a008; }
 
   /* selected route */
   #routebar { display:none; margin-top:10px; }
-  .rhead { display:flex; align-items:center; gap:10px; }
+  .rhead { display:flex; align-items:center; gap:8px; }
   .rhead .badge { font-size:15px; padding:6px 9px; }
-  .rhead .itxt .a { font-size:15px; }
-  #closeRoute { margin-left:auto; flex:none; border:1px solid var(--line); background:#fff; border-radius:50%; width:34px; height:34px; font-size:18px; line-height:1; }
+  .iconbtn { flex:none; border:1px solid var(--line); background:#fff; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; padding:0; }
+  .iconbtn svg { width:18px; height:18px; }
+  .iconbtn.on { color:#e3a008; border-color:#f3d48a; background:#fffbeb; }
   #dirs { display:flex; gap:6px; margin-top:10px; overflow-x:auto; scrollbar-width:none; }
   #dirs button { flex:none; border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 12px; font-size:13.5px; display:flex; align-items:center; gap:6px; white-space:nowrap; }
   #dirs button.on { border-color:var(--ink); background:var(--ink); color:#fff; }
-  #dirs .sw { width:10px; height:10px; border-radius:50%; flex:none; }
-  #routeMsg { font-size:13px; margin-top:8px; color:var(--muted); }
-  #routeMsg.warn { color:#9a5b00; background:#fff6e5; border-radius:8px; padding:8px 10px; }
+  .sw { width:10px; height:10px; border-radius:50%; flex:none; display:inline-block; }
+  #routeMsg { font-size:13px; margin-top:8px; color:var(--muted); line-height:1.4; }
+  .warn { color:var(--amber) !important; background:var(--amberbg); border-radius:8px; padding:8px 10px; }
 
-  /* bus pins */
+  /* ----- map markers ----- */
   .bus { position:relative; }
   .bus .pin { position:absolute; inset:0; border-radius:50%; background:var(--c); border:2.5px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.35);
               display:flex; align-items:center; justify-content:center; color:#fff; font:800 11px/1 system-ui,sans-serif; letter-spacing:-.3px; }
@@ -68,25 +85,54 @@
                 border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:9px solid var(--c); transform-origin:6px 29px; }
   .bus.stale .pin { background:#fff; color:var(--stale); border:2.5px dashed var(--stale); box-shadow:none; }
   .bus.stale .arrow { display:none; }
+  .bus.focus .pin { box-shadow:0 0 0 5px rgba(23,23,28,.3), 0 1px 5px rgba(0,0,0,.35); }
   .marker-cluster { background:rgba(215,25,45,.18); border-radius:50%; }
   .marker-cluster div { width:34px; height:34px; margin:3px; border-radius:50%; background:var(--red); color:#fff; font:700 12px/34px system-ui,sans-serif; text-align:center; }
+  .me { width:18px; height:18px; border-radius:50%; background:#1a73e8; border:3px solid #fff; box-shadow:0 0 0 2px rgba(26,115,232,.35), 0 1px 4px rgba(0,0,0,.3); }
 
-  /* popups */
-  .leaflet-popup-content { margin:12px 14px; font-size:14px; line-height:1.45; min-width:180px; }
-  .pp-h { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
-  .pp-to { font-weight:700; font-size:15px; }
-  .pp-m { color:var(--muted); font-size:13px; }
-  .pp-warn { color:#9a5b00; font-size:13px; margin-top:4px; }
-  .pp-btn { margin-top:8px; border:0; background:var(--ink); color:#fff; border-radius:8px; padding:7px 10px; font-size:13px; }
-  .pp-routes { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
-  .pp-routes button { border:0; padding:5px 8px; border-radius:7px; background:var(--red); color:#fff; font-weight:700; font-size:12.5px; }
-  .pp-routes button.feeder { background:#0f8a5f; }
-
-  /* legend */
   .legend { background:rgba(255,255,255,.95); border-radius:10px; padding:7px 10px; font-size:12px; color:var(--muted); box-shadow:0 1px 6px rgba(0,0,0,.15); line-height:1.7; }
   .legend i { display:inline-block; width:11px; height:11px; border-radius:50%; vertical-align:-1px; margin-right:5px; }
   .legend .s { background:#fff; border:2px dashed var(--stale); }
-  #toast { position:absolute; left:50%; bottom:calc(env(safe-area-inset-bottom) + 24px); transform:translateX(-50%); z-index:1001; background:var(--ink); color:#fff;
+  .locbtn { width:44px; height:44px; border-radius:12px; background:#fff; border:0; box-shadow:0 1px 6px rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center; color:#1a73e8; }
+  .locbtn svg { width:22px; height:22px; }
+  .locbtn.busy svg { animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  body.sheet-open .legend, body.sheet-open .leaflet-bottom.leaflet-right { display:none; }
+
+  /* ----- bottom sheet ----- */
+  #sheet { position:fixed; left:0; right:0; bottom:0; z-index:1100; background:#fff; border-radius:18px 18px 0 0;
+           box-shadow:0 -6px 24px rgba(0,0,0,.18); max-height:62vh; display:flex; flex-direction:column;
+           transform:translateY(105%); transition:transform .22s ease; padding-bottom:var(--safe-b); }
+  #sheet.open { transform:none; }
+  @media (min-width:700px) { #sheet { left:auto; right:12px; bottom:12px; width:400px; border-radius:16px; max-height:70vh; } }
+  .grab { width:38px; height:5px; border-radius:3px; background:#d5d5dd; margin:8px auto 2px; flex:none; }
+  .shead { display:flex; align-items:flex-start; gap:10px; padding:6px 14px 10px; flex:none; border-bottom:1px solid var(--line); }
+  .shead .badge { margin-top:2px; font-size:15px; padding:6px 9px; }
+  .stitle { flex:1; min-width:0; }
+  .stitle .a { font-size:17px; font-weight:700; line-height:1.25; }
+  .stitle .b { font-size:13px; color:var(--muted); margin-top:2px; }
+  .sacts { display:flex; gap:6px; flex:none; }
+  .sbody { overflow:auto; padding:6px 0 10px; -webkit-overflow-scrolling:touch; }
+  .srow { display:flex; align-items:center; gap:10px; padding:10px 14px; width:100%; border:0; background:none; text-align:left; min-height:54px; }
+  button.srow:hover { background:var(--soft); }
+  .eta { margin-left:auto; flex:none; text-align:right; min-width:52px; }
+  .eta .n { font-size:18px; font-weight:800; color:var(--ink); }
+  .eta .n.now { color:var(--green); font-size:15px; }
+  .eta .u { font-size:12px; color:var(--muted); }
+  .eta.st .n { color:var(--stale); font-size:15px; }
+  .snote { font-size:12.5px; color:var(--muted); padding:8px 14px 0; line-height:1.45; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; padding:6px 14px 4px; }
+  .facts { padding:8px 14px; margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:14px; }
+  .facts dt { color:var(--muted); }
+  .facts dd { margin:0; font-weight:600; }
+  .sbtns { display:flex; gap:8px; padding:8px 14px 4px; flex-wrap:wrap; }
+  .btn { border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px 14px; font-size:14px; font-weight:600; flex:1; min-width:130px; }
+  .btn.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .btn.on { background:#e8f0fe; border-color:#a8c7fa; color:#174ea6; }
+  .skel { height:14px; border-radius:6px; background:linear-gradient(90deg,#eee,#f6f6f6,#eee); background-size:200% 100%; animation:sh 1.2s infinite; margin:14px; }
+  @keyframes sh { to { background-position:-200% 0; } }
+
+  #toast { position:fixed; left:50%; bottom:calc(var(--safe-b) + 24px); transform:translateX(-50%); z-index:1200; background:var(--ink); color:#fff;
            padding:10px 14px; border-radius:10px; font-size:13.5px; max-width:90%; display:none; text-align:center; }
 </style>
 </head>
@@ -103,11 +149,14 @@
       <button id="clearQ" aria-label="Clear search">×</button>
       <div id="results" role="listbox"></div>
     </div>
+    <div id="favs"></div>
     <div id="routebar">
       <div class="rhead">
         <span id="rBadge" class="badge"></span>
         <div class="itxt"><div class="a" id="rName"></div><div class="b" id="rSub"></div></div>
-        <button id="closeRoute" aria-label="Show all buses">×</button>
+        <button id="favRoute" class="iconbtn" aria-label="Save route"></button>
+        <button id="shareRoute" class="iconbtn" aria-label="Share route"></button>
+        <button id="closeRoute" class="iconbtn" aria-label="Show all buses"></button>
       </div>
       <div id="dirs"></div>
       <div id="routeMsg"></div>
@@ -115,30 +164,87 @@
   </div>
   <div id="map"></div>
 </div>
+
+<div id="sheet" role="dialog" aria-modal="false">
+  <div class="grab"></div>
+  <div class="shead">
+    <div id="sBadge"></div>
+    <div class="stitle"><div class="a" id="sTitle"></div><div class="b" id="sSub"></div></div>
+    <div class="sacts" id="sActs"></div>
+  </div>
+  <div class="sbody" id="sBody"></div>
+</div>
 <div id="toast"></div>
 
 <script>
+/* =========================================================
+   Constants & helpers
+   ========================================================= */
 const STALE_SEC = 120;
 const DIR_COLORS = ['#d7192d', '#1f5fd1'];
 const $ = (id) => document.getElementById(id);
+const ICONS = {
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+  starOn: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  loc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+};
 const store = {
-  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+  get(k, d = null) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+function metres(a, b) { // [lat, lon] pairs
+  const R = 6371000, t = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * t, dLon = (b[1] - a[1]) * t;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const fmtDist = (m) => (m < 1000 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toFixed(1) + ' km');
+function toast(msg, ms = 3200) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = 'none'), ms);
+}
 
-/* ---------- state ---------- */
+/* =========================================================
+   State
+   ========================================================= */
 let catalog = { routes: [], stops: [] };
 let routeByKey = new Map();
-let buses = [];
-let clockOffset = 0;            // server time - client time (s)
-let sel = null;                 // { k, data, dir: 'all'|0|1 }
-let mode = null;
-const markers = new Map();      // bus id -> { m, sig }
-let refreshTimer = null;
+let stopById = new Map();
+let buses = [], busById = new Map();
+let clockOffset = 0;
+let lastUpdated = '';
+let sel = null;              // selected route { k, dir, data }
+let mode = null;             // 'all' | 'route'
+const markers = new Map();   // bus id -> { m, sig, b }
+let sheetState = null;       // { type:'bus'|'stop'|'nearby', ... }
+let follow = null;           // bus id being followed
+let me = null;               // [lat, lon]
+let favs = store.get('favs', []); // [{t:'r', k} | {t:'s', ids, name, lat, lon}]
 
-/* ---------- map ---------- */
+const serverNow = () => Date.now() / 1000 + clockOffset;
+const isStale = (b) => b.ts && serverNow() - b.ts > STALE_SEC;
+function ageText(ts) {
+  if (!ts) return 'unknown';
+  const s = Math.max(0, Math.round(serverNow() - ts));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  return m === 1 ? '1 min ago' : m + ' min ago';
+}
+let liveCounts = new Map();
+function countLive() {
+  liveCounts = new Map();
+  for (const b of buses) if (!isStale(b)) for (const key of [b.rk, b.rk + '#' + b.d]) liveCounts.set(key, (liveCounts.get(key) || 0) + 1);
+}
+const liveCount = (k, d) => liveCounts.get(d == null ? k : k + '#' + d) || 0;
+const badge = (short, feeder) => `<span class="badge${feeder ? ' feeder' : ''}">${esc(short)}</span>`;
+
+/* =========================================================
+   Map
+   ========================================================= */
 const map = L.map('map', { zoomControl: false }).setView([3.139, 101.6869], 12);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -148,17 +254,13 @@ const cluster = L.markerClusterGroup({
   chunkedLoading: true, showCoverageOnHover: false, maxClusterRadius: 50, disableClusteringAtZoom: 16,
   iconCreateFunction: (c) => L.divIcon({ html: `<div>${c.getChildCount()}</div>`, className: 'marker-cluster', iconSize: [40, 40] }),
 }).addTo(map);
-const routeBusLayer = L.layerGroup().addTo(map);
 const routeGeoLayer = L.layerGroup().addTo(map);
-let stopMarker = null;
+const routeBusLayer = L.layerGroup().addTo(map);
+const overlay = L.layerGroup().addTo(map);   // stop highlight + my location
+let stopHighlight = null, meMarker = null, meCircle = null;
 
 const legend = L.control({ position: 'bottomleft' });
-legend.onAdd = () => {
-  const d = L.DomUtil.create('div', 'legend');
-  d.id = 'legend';
-  d.innerHTML = legendHtml();
-  return d;
-};
+legend.onAdd = () => { const d = L.DomUtil.create('div', 'legend'); d.id = 'legend'; d.innerHTML = legendHtml(); return d; };
 legend.addTo(map);
 function legendHtml() {
   const live = sel && sel.data
@@ -166,80 +268,57 @@ function legendHtml() {
     : `<div><i style="background:var(--red)"></i>Live bus</div>`;
   return live + `<div><i class="s"></i>No update for 2+ min</div>`;
 }
+const legendUpdate = () => { const l = $('legend'); if (l) l.innerHTML = legendHtml(); };
 
-/* ---------- helpers ---------- */
-const serverNow = () => Date.now() / 1000 + clockOffset;
-function ageText(ts) {
-  if (!ts) return '';
-  const s = Math.max(0, Math.round(serverNow() - ts));
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  return m === 1 ? '1 min ago' : m + ' min ago';
-}
-const isStale = (b) => b.ts && serverNow() - b.ts > STALE_SEC;
-function toast(msg, ms = 3500) {
-  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
-  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = 'none'), ms);
-}
-let liveCounts = new Map();
-function countLive() {
-  liveCounts = new Map();
-  for (const b of buses) if (!isStale(b)) for (const key of [b.rk, b.rk + '#' + b.d]) liveCounts.set(key, (liveCounts.get(key) || 0) + 1);
-}
-function liveCount(k, d) { return liveCounts.get(d == null ? k : k + '#' + d) || 0; }
-function routeLabel(r) { return r ? r.short : '?'; }
+const locCtl = L.control({ position: 'topright' });
+locCtl.onAdd = () => {
+  const b = L.DomUtil.create('button', 'locbtn');
+  b.id = 'locBtn'; b.innerHTML = ICONS.loc; b.setAttribute('aria-label', 'Stops near me');
+  L.DomEvent.disableClickPropagation(b);
+  b.addEventListener('click', nearMe);
+  return b;
+};
+locCtl.addTo(map);
 
-/* ---------- bus markers ---------- */
-function busColor(b) {
-  if (mode === 'route') return DIR_COLORS[b.d] || DIR_COLORS[0];
-  return 'var(--red)';
-}
+map.on('click', () => { if (sheetState) closeSheet(); });
+map.on('dragstart', () => { if (follow) { follow = null; renderSheet(); } });
+
+/* =========================================================
+   Bus markers
+   ========================================================= */
+function busColor(b) { return mode === 'route' ? (DIR_COLORS[b.d] || DIR_COLORS[0]) : 'var(--red)'; }
 function busIcon(b) {
   const stale = isStale(b);
+  const focus = sheetState && sheetState.type === 'bus' && sheetState.id === b.id;
   const arrow = b.bearing != null && !stale ? `<div class="arrow" style="transform:rotate(${b.bearing}deg)"></div>` : '';
   return L.divIcon({
-    className: 'bus' + (stale ? ' stale' : ''),
+    className: 'bus' + (stale ? ' stale' : '') + (focus ? ' focus' : ''),
     html: `<div style="--c:${busColor(b)}">${arrow}<div class="pin">${esc(String(b.route || '?').slice(0, 5))}</div></div>`,
-    iconSize: [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -18],
+    iconSize: [36, 36], iconAnchor: [18, 18],
   });
 }
-function busPopup(b) {
-  const r = routeByKey.get(b.rk);
-  const stale = isStale(b);
-  return `<div class="pp-h"><span class="badge${r && r.feeder ? ' feeder' : ''}">${esc(b.route || '?')}</span>
-      <span class="pp-to">${b.to ? 'To ' + esc(b.to) : esc(r ? r.long : 'Route ' + (b.route || '?'))}</span></div>
-    <div class="pp-m">${b.kmh != null && !stale ? (b.kmh < 3 ? 'Stopped' : `Moving · ${b.kmh} km/h`) + ' · ' : ''}Bus ${esc(b.plate || b.id)}</div>
-    <div class="pp-m">Location updated ${esc(ageText(b.ts))}</div>
-    ${stale ? '<div class="pp-warn">No recent update. The bus may have moved or ended its trip.</div>' : ''}
-    ${mode !== 'route' && r ? `<button class="pp-btn" data-route="${esc(b.rk)}">Show this route</button>` : ''}`;
-}
-
 function renderBuses() {
   countLive();
   const newMode = sel ? 'route' : 'all';
-  if (newMode !== mode) {
-    cluster.clearLayers(); routeBusLayer.clearLayers(); markers.clear();
-    mode = newMode;
-  }
-  const layer = mode === 'all' ? cluster : routeBusLayer;
+  if (newMode !== mode) { cluster.clearLayers(); routeBusLayer.clearLayers(); markers.clear(); mode = newMode; }
   const shown = sel ? buses.filter((b) => b.rk === sel.k && (sel.dir === 'all' || b.d === sel.dir)) : buses;
   const keep = new Set(), added = [];
+  const focusId = sheetState && sheetState.type === 'bus' ? sheetState.id : null;
   for (const b of shown) {
     keep.add(b.id);
-    const sig = [b.bearing, isStale(b), b.d, b.route, mode].join('|');
+    const sig = [b.bearing, isStale(b), b.d, b.route, mode, focusId === b.id].join('|');
     let e = markers.get(b.id);
     if (!e) {
       const m = L.marker([b.lat, b.lon], { icon: busIcon(b), keyboard: false });
-      m.bindPopup(() => busPopup(e.b), { autoPanPaddingTopLeft: [10, 10] });
+      const id = b.id;
+      m.on('click', (ev) => { L.DomEvent.stopPropagation(ev); openBus(id); });
       e = { m, sig, b };
-      markers.set(b.id, e);
-      added.push(m);
+      markers.set(b.id, e); added.push(m);
     } else {
       e.b = b;
       const ll = e.m.getLatLng();
       if (ll.lat !== b.lat || ll.lng !== b.lon) e.m.setLatLng([b.lat, b.lon]);
       if (e.sig !== sig) { e.m.setIcon(busIcon(b)); e.sig = sig; }
-      if (e.m.isPopupOpen()) e.m.setPopupContent(busPopup(b));
     }
   }
   const gone = [];
@@ -249,27 +328,30 @@ function renderBuses() {
   updateSummary();
   if (sel) renderRouteBar();
 }
-
 function updateSummary() {
   const live = buses.filter((b) => !isStale(b)).length;
   $('summary').innerHTML = buses.length ? `<b style="color:var(--ink)">${live.toLocaleString()}</b> buses live<br>${esc(lastUpdated)}` : esc(lastUpdated || 'Loading…');
 }
 
-/* ---------- data ---------- */
-let lastUpdated = '';
+/* =========================================================
+   Data loading
+   ========================================================= */
 async function refresh() {
   try {
     const r = await fetch('/api/buses', { cache: 'no-store' });
     const data = await r.json();
-    if (!r.ok && !data.buses) throw new Error();
-    if (!data.buses.length && data.errors && data.errors.length) throw new Error();
+    if (!data.buses || (!data.buses.length && data.errors && data.errors.length)) throw new Error();
     clockOffset = data.now - Date.now() / 1000;
     buses = data.buses;
+    busById = new Map(buses.map((b) => [b.id, b]));
     lastUpdated = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     renderBuses();
+    renderFavs();
+    if (follow && busById.has(follow)) { const b = busById.get(follow); revealAbove(b.lat, b.lon); }
     if ($('results').style.display === 'block') search();
+    if (sheetState) refreshSheet();
   } catch {
-    lastUpdated = 'Live data is unavailable, retrying…';
+    lastUpdated = 'Live data unavailable, retrying…';
     updateSummary();
     if (!buses.length) toast('Live bus data is temporarily unavailable. We’ll keep trying.');
   }
@@ -282,14 +364,22 @@ async function loadCatalog() {
     catalog = data;
     routeByKey = new Map(catalog.routes.map((rt) => [rt.k, rt]));
     catalog.routes.forEach((rt) => (rt._n = norm(rt.short + ' ' + rt.long + ' ' + rt.dirs.map((d) => d.to).join(' '))));
-    catalog.stops.forEach((s) => (s._n = norm(s[0])));
+    catalog.stops.forEach((s) => { s._n = norm(s[0]); stopById.set(s[4], s); });
   } catch {
     toast('Couldn’t load route names. You can still see live buses.');
   }
   $('q').placeholder = 'Search bus number, place or stop';
 }
+// Same-name stops close together (e.g. both sides of the road) are treated as one stop.
+function stopGroup(seed) {
+  const n = norm(seed[0]);
+  const g = catalog.stops.filter((s) => s._n === n && metres([s[1], s[2]], [seed[1], seed[2]]) < 250);
+  return g.length ? g : [seed];
+}
 
-/* ---------- search ---------- */
+/* =========================================================
+   Search
+   ========================================================= */
 function search() {
   const raw = $('q').value, q = norm(raw);
   $('clearQ').style.display = raw ? 'block' : 'none';
@@ -298,9 +388,8 @@ function search() {
   const words = q.split(' ');
   const has = (n) => words.every((w) => n.includes(w));
   const routes = catalog.routes.filter((r) => has(r._n))
-    .map((r) => ({ r, score: (norm(r.short) === q ? 0 : norm(r.short).startsWith(q) ? 1 : 2) }))
+    .map((r) => ({ r, score: norm(r.short) === q ? 0 : norm(r.short).startsWith(q) ? 1 : 2 }))
     .sort((a, b) => a.score - b.score || liveCount(b.r.k) - liveCount(a.r.k)).slice(0, 8).map((x) => x.r);
-  // stops: one result per name, keep the one served by most routes
   const seen = new Map();
   for (const s of catalog.stops) if (has(s._n)) {
     const prev = seen.get(s._n);
@@ -309,92 +398,80 @@ function search() {
   }
   const stops = [...seen.values()].sort((a, b) => b[3].length - a[3].length).slice(0, 8);
   let html = '';
-  if (routes.length) {
-    html += `<div class="sec">Bus routes</div>` + routes.map((r) => {
-      const n = liveCount(r.k);
-      const sub = r.dirs.length === 2 && r.dirs[0].to && r.dirs[1].to ? `${r.dirs[1].to} ⇄ ${r.dirs[0].to}` : (r.dirs[0] && r.dirs[0].to ? 'To ' + r.dirs[0].to : '');
-      return `<button class="item" data-route="${esc(r.k)}"><span class="badge${r.feeder ? ' feeder' : ''}">${esc(r.short)}</span>
-        <span class="itxt"><div class="a">${esc(r.long || sub || 'Route ' + r.short)}</div><div class="b">${esc(r.long ? sub : '')}${r.feeder ? (sub && r.long ? ' · ' : '') + 'MRT feeder' : ''}</div></span>
-        <span class="count${n ? ' on' : ''}">${n ? n + ' live' : 'none live'}</span></button>`;
-    }).join('');
-  }
-  if (stops.length) {
-    html += `<div class="sec">Bus stops</div>` + stops.map((s) => {
-      const names = s[3].slice(0, 6).map((i) => catalog.routes[i].short).join(', ') + (s[3].length > 6 ? '…' : '');
-      return `<button class="item" data-stop="${esc(s[1] + ',' + s[2])}" data-name="${esc(s[0])}" data-routes="${s[3].join(',')}">
-        <span class="badge" style="background:#fff;color:var(--ink);border:1px solid var(--line)">Stop</span>
-        <span class="itxt"><div class="a">${esc(s[0])}</div><div class="b">Buses: ${esc(names)}</div></span></button>`;
-    }).join('');
-  }
+  if (routes.length) html += `<div class="sec">Bus routes</div>` + routes.map(routeItem).join('');
+  if (stops.length) html += `<div class="sec">Bus stops</div>` + stops.map((s) => stopItem(s)).join('');
   if (!html) html = `<div class="none">${catalog.routes.length ? `No routes or stops match “${esc(raw)}”. Try a bus number like T789 or a place like Bangsar.` : 'Route list is still loading…'}</div>`;
   box.innerHTML = html;
   box.style.display = 'block';
 }
+function routeSub(r) {
+  return r.dirs.length === 2 && r.dirs[0].to && r.dirs[1].to ? `${r.dirs[1].to} ⇄ ${r.dirs[0].to}` : (r.dirs[0] && r.dirs[0].to ? 'To ' + r.dirs[0].to : '');
+}
+function routeItem(r) {
+  const n = liveCount(r.k), sub = routeSub(r);
+  return `<button class="item" data-route="${esc(r.k)}">${badge(r.short, r.feeder)}
+    <span class="itxt"><div class="a">${esc(r.long || sub || 'Route ' + r.short)}</div><div class="b">${esc(r.long ? sub : '')}${r.feeder ? (sub && r.long ? ' · ' : '') + 'MRT feeder' : ''}</div></span>
+    <span class="count${n ? ' on' : ''}">${n ? n + ' live' : 'none live'}</span></button>`;
+}
+function stopItem(s, dist) {
+  const names = s[3].slice(0, 6).map((i) => catalog.routes[i].short).join(', ') + (s[3].length > 6 ? '…' : '');
+  return `<button class="item" data-stopid="${esc(s[4])}"><span class="badge stop">Stop</span>
+    <span class="itxt"><div class="a">${esc(s[0])}</div><div class="b">Buses: ${esc(names)}</div></span>
+    ${dist != null ? `<span class="count">${fmtDist(dist)}</span>` : ''}</button>`;
+}
 $('q').addEventListener('input', search);
-$('q').addEventListener('focus', search);
+$('q').addEventListener('focus', () => { closeSheet(); search(); });
 $('q').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { const first = $('results').querySelector('.item'); if (first) first.click(); }
   if (e.key === 'Escape') { $('results').style.display = 'none'; $('q').blur(); }
 });
 $('clearQ').addEventListener('click', () => { $('q').value = ''; search(); $('q').focus(); });
+document.addEventListener('click', (e) => { if (!e.target.closest('.searchwrap')) $('results').style.display = 'none'; });
+
+// One handler for every route / stop / bus button anywhere on the page.
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('.searchwrap')) $('results').style.display = 'none';
-});
-$('results').addEventListener('click', (e) => {
-  const it = e.target.closest('.item'); if (!it) return;
-  $('results').style.display = 'none'; $('q').blur();
-  if (it.dataset.route) { $('q').value = ''; $('clearQ').style.display = 'none'; selectRoute(it.dataset.route); }
-  else if (it.dataset.stop) showStop(it.dataset.name, it.dataset.stop.split(',').map(Number), it.dataset.routes.split(',').filter(Boolean).map(Number));
-});
+  const el = e.target.closest('[data-route],[data-stopid],[data-bus]');
+  if (!el) return;
+  e.stopPropagation();
+  $('results').style.display = 'none';
+  if (el.closest('#results')) { $('q').value = ''; $('clearQ').style.display = 'none'; $('q').blur(); }
+  if (el.dataset.route) selectRoute(el.dataset.route, el.dataset.dir != null ? Number(el.dataset.dir) : 'all');
+  else if (el.dataset.stopid) { const s = stopById.get(el.dataset.stopid); if (s) openStop(stopGroup(s)); }
+  else if (el.dataset.bus) openBus(el.dataset.bus);
+}, true);
 
-function showStop(name, [lat, lon], routeIdx) {
-  if (stopMarker) map.removeLayer(stopMarker);
-  const btns = routeIdx.map((i) => catalog.routes[i]).filter(Boolean)
-    .map((r) => `<button class="${r.feeder ? 'feeder' : ''}" data-route="${esc(r.k)}">${esc(r.short)}</button>`).join('');
-  stopMarker = L.circleMarker([lat, lon], { radius: 9, color: '#17171c', weight: 3, fillColor: '#fff', fillOpacity: 1 }).addTo(map)
-    .bindPopup(`<div class="pp-to">${esc(name)}</div><div class="pp-m">Tap a bus to see where it is now</div><div class="pp-routes">${btns}</div>`);
-  map.setView([lat, lon], 16);
-  stopMarker.openPopup();
-}
-
-/* ---------- route selection ---------- */
+/* =========================================================
+   Route selection
+   ========================================================= */
 async function selectRoute(k, dir = 'all') {
   sel = { k, dir, data: null };
   store.set('route', k);
-  map.closePopup();
-  if (stopMarker) { map.removeLayer(stopMarker); stopMarker = null; }
+  closeSheet();
   routeGeoLayer.clearLayers();
   $('routebar').style.display = 'block';
-  renderRouteBar();
-  renderBuses();
-  fitToBuses();
+  renderRouteBar(); renderBuses(); renderFavs();
+  const pts = buses.filter((b) => b.rk === k).map((b) => [b.lat, b.lon]);
+  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 15 });
   try {
     const res = await fetch('/api/routes?k=' + encodeURIComponent(k));
     if (!res.ok) throw new Error();
     const data = await res.json();
     if (!sel || sel.k !== k) return;
     sel.data = data;
-    drawRoute();
-    renderRouteBar();
-    const lines = data.dirs.flatMap((d) => d.line);
-    if (lines.length) map.fitBounds(L.latLngBounds(lines), { padding: [30, 30] });
+    drawRoute(); renderRouteBar();
+    const line = data.dirs.flatMap((d) => d.line);
+    if (line.length) map.fitBounds(L.latLngBounds(line), { padding: [30, 30] });
   } catch {
     if (sel && sel.k === k) toast('Couldn’t load the route line. Live buses are still shown.');
   }
   legendUpdate();
 }
-function fitToBuses() {
-  const pts = buses.filter((b) => b.rk === sel.k).map((b) => [b.lat, b.lon]);
-  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 15 });
-}
 function clearRoute() {
   sel = null; store.set('route', null);
   routeGeoLayer.clearLayers();
   $('routebar').style.display = 'none';
-  renderBuses(); legendUpdate();
+  renderBuses(); legendUpdate(); renderFavs();
 }
-function legendUpdate() { const l = $('legend'); if (l) l.innerHTML = legendHtml(); }
-
 function drawRoute() {
   routeGeoLayer.clearLayers();
   if (!sel || !sel.data) return;
@@ -406,15 +483,14 @@ function drawRoute() {
       L.polyline(d.line, { color, weight: active ? 4.5 : 3, opacity: active ? 0.9 : 0.25, interactive: false }).addTo(routeGeoLayer);
     }
     if (!active) continue;
-    d.stops.forEach(([name, lat, lon], i) => {
+    d.stops.forEach(([name, lat, lon, id], i) => {
       const end = i === 0 || i === d.stops.length - 1;
-      L.circleMarker([lat, lon], { radius: end ? 7 : 4.5, color, weight: end ? 3 : 2, fillColor: '#fff', fillOpacity: 1 })
-        .bindPopup(`<div class="pp-to">${esc(name)}</div><div class="pp-m">Stop ${i + 1} of ${d.stops.length} · towards ${esc(d.to)}</div>`)
+      L.circleMarker([lat, lon], { radius: end ? 7 : 5, color, weight: end ? 3 : 2, fillColor: '#fff', fillOpacity: 1 })
+        .on('click', (ev) => { L.DomEvent.stopPropagation(ev); openStop(stopGroup(stopById.get(id) || [name, lat, lon, [], id])); })
         .addTo(routeGeoLayer);
     });
   }
 }
-
 function renderRouteBar() {
   if (!sel) return;
   const r = routeByKey.get(sel.k) || { short: sel.k.split('|')[1], long: '', dirs: [] };
@@ -424,9 +500,12 @@ function renderRouteBar() {
   $('rName').textContent = r.long || 'Route ' + r.short;
   const total = liveCount(sel.k);
   $('rSub').textContent = (r.feeder ? 'MRT feeder · ' : '') + (total ? `${total} bus${total > 1 ? 'es' : ''} live now` : 'No buses live right now');
+  const on = isFav({ t: 'r', k: sel.k });
+  $('favRoute').innerHTML = on ? ICONS.starOn : ICONS.star;
+  $('favRoute').classList.toggle('on', on);
   const dirHtml = dirs.length > 1
-    ? [`<button data-dir="all" class="${sel.dir === 'all' ? 'on' : ''}">Both directions</button>`]
-        .concat(dirs.map((d) => `<button data-dir="${d.d}" class="${sel.dir === d.d ? 'on' : ''}"><span class="sw" style="background:${DIR_COLORS[d.d] || DIR_COLORS[0]}"></span>To ${esc(d.to || (d.d ? 'origin' : 'destination'))} · ${liveCount(sel.k, d.d)}</button>`)).join('')
+    ? [`<button data-d="all" class="${sel.dir === 'all' ? 'on' : ''}">Both directions</button>`]
+        .concat(dirs.map((d) => `<button data-d="${d.d}" class="${sel.dir === d.d ? 'on' : ''}"><span class="sw" style="background:${DIR_COLORS[d.d] || DIR_COLORS[0]}"></span>To ${esc(d.to || (d.d ? 'origin' : 'destination'))} · ${liveCount(sel.k, d.d)}</button>`)).join('')
     : '';
   if ($('dirs').innerHTML !== dirHtml) $('dirs').innerHTML = dirHtml;
   const msg = $('routeMsg');
@@ -435,30 +514,298 @@ function renderRouteBar() {
   if (!buses.length) { msg.className = ''; msg.textContent = ''; }
   else if (!shownAll) { msg.className = 'warn'; msg.textContent = 'No buses are reporting on this route right now. Service may not have started yet, may have ended, or the bus GPS may be offline.'; }
   else if (!shownLive) { msg.className = 'warn'; msg.textContent = 'Buses on this route haven’t reported for over 2 minutes, so their positions may be out of date.'; }
-  else { msg.className = ''; msg.textContent = 'Arrows show which way each bus is heading. Positions update every 30 seconds.'; }
+  else { msg.className = ''; msg.textContent = 'Tap a stop for arrival estimates, or a bus for details.'; }
 }
 $('dirs').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b || !sel) return;
-  sel.dir = b.dataset.dir === 'all' ? 'all' : Number(b.dataset.dir);
+  sel.dir = b.dataset.d === 'all' ? 'all' : Number(b.dataset.d);
   drawRoute(); renderBuses();
 });
+$('closeRoute').innerHTML = ICONS.close;
+$('shareRoute').innerHTML = ICONS.share;
 $('closeRoute').addEventListener('click', clearRoute);
-map.getContainer().addEventListener('click', (e) => {
-  const b = e.target.closest('[data-route]');
-  if (b) { e.stopPropagation(); selectRoute(b.dataset.route); }
-}, true);
+$('favRoute').addEventListener('click', () => { if (sel) { toggleFav({ t: 'r', k: sel.k }); renderRouteBar(); } });
+$('shareRoute').addEventListener('click', () => {
+  if (!sel) return;
+  const r = routeByKey.get(sel.k);
+  share(`Bus ${r ? r.short : ''} live`, { route: sel.k });
+});
 
-/* ---------- start ---------- */
+/* =========================================================
+   Bottom sheet
+   ========================================================= */
+function openSheet(state) {
+  sheetState = state;
+  document.body.classList.add('sheet-open');
+  $('sheet').classList.add('open');
+  $('sBody').scrollTop = 0;
+  renderSheet();
+  renderBuses();
+}
+function closeSheet() {
+  if (!sheetState) return;
+  sheetState = null; follow = null;
+  $('sheet').classList.remove('open');
+  document.body.classList.remove('sheet-open');
+  if (stopHighlight) { overlay.removeLayer(stopHighlight); stopHighlight = null; }
+  renderBuses();
+}
+function sheetActions(btns) {
+  $('sActs').innerHTML = btns.map(([id, icon, label, on]) => `<button class="iconbtn${on ? ' on' : ''}" data-act="${id}" aria-label="${label}">${icon}</button>`).join('')
+    + `<button class="iconbtn" data-act="close" aria-label="Close">${ICONS.close}</button>`;
+}
+$('sActs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, st = sheetState;
+  if (act === 'close') return closeSheet();
+  if (!st) return;
+  if (act === 'fav' && st.type === 'stop') { toggleFav(stopFav(st)); renderSheet(); }
+  if (act === 'share' && st.type === 'stop') share(st.name + ' bus stop', { stop: st.ids.join(',') });
+  if (act === 'share' && st.type === 'bus') { const b2 = busById.get(st.id); share(`Bus ${b2 ? b2.route : ''} live`, { bus: st.id }); }
+});
+// Centre a point in the part of the map that the sheet doesn't cover.
+function revealAbove(lat, lon, zoom) {
+  if (zoom && zoom !== map.getZoom()) map.setView([lat, lon], zoom, { animate: false });
+  const h = sheetState && innerWidth < 700 ? $('sheet').offsetHeight : 0;
+  const p = map.latLngToContainerPoint([lat, lon]);
+  const size = map.getSize();
+  const target = L.point(size.x / 2, Math.max(60, (size.y - h) / 2));
+  map.panBy(p.subtract(target), { animate: true });
+}
+function renderSheet() {
+  const st = sheetState; if (!st) return;
+  if (st.type === 'bus') renderBusSheet(st);
+  else if (st.type === 'stop') renderStopSheet(st);
+  else if (st.type === 'nearby') renderNearbySheet(st);
+}
+function refreshSheet() {
+  const st = sheetState; if (!st) return;
+  if (st.type === 'stop') loadArrivals(st);
+  else renderSheet();
+}
+
+/* ----- bus ----- */
+function openBus(id) {
+  const b = busById.get(id);
+  if (!b) return toast('That bus isn’t reporting right now.');
+  openSheet({ type: 'bus', id });
+  revealAbove(b.lat, b.lon, Math.max(map.getZoom(), 15));
+}
+function renderBusSheet(st) {
+  const b = busById.get(st.id);
+  const r = b && routeByKey.get(b.rk);
+  if (!b) {
+    $('sBadge').innerHTML = ''; $('sTitle').textContent = 'Bus not reporting'; $('sSub').textContent = '';
+    $('sBody').innerHTML = '<div class="snote">This bus has stopped sending its location. It may have finished its trip.</div>';
+    sheetActions([]); return;
+  }
+  const stale = isStale(b);
+  $('sBadge').innerHTML = badge(b.route || '?', r && r.feeder);
+  $('sTitle').textContent = b.to ? 'To ' + b.to : (r ? r.long : 'Route ' + b.route);
+  $('sSub').textContent = r && b.to ? r.long : (r && r.feeder ? 'MRT feeder' : '');
+  sheetActions([['share', ICONS.share, 'Share this bus']]);
+  const status = stale ? 'Not updating' : b.kmh == null ? 'Live' : b.kmh < 3 ? 'Stopped' : `Moving · ${b.kmh} km/h`;
+  $('sBody').innerHTML = `
+    ${stale ? '<div class="snote warn" style="margin:8px 14px 0">No update for over 2 minutes. The bus may have moved or ended its trip.</div>' : ''}
+    <dl class="facts">
+      <dt>Status</dt><dd>${esc(status)}</dd>
+      <dt>Location</dt><dd>Updated ${esc(ageText(b.ts))}</dd>
+      <dt>Bus</dt><dd>${esc(b.plate || b.id)}</dd>
+    </dl>
+    <div class="sbtns">
+      <button class="btn${follow === b.id ? ' on' : ''}" id="followBtn">${follow === b.id ? '✓ Following bus' : 'Follow this bus'}</button>
+      ${!sel || sel.k !== b.rk ? `<button class="btn primary" data-route="${esc(b.rk)}" ${b.d != null ? `data-dir="${b.d}"` : ''}>Show route</button>` : ''}
+    </div>`;
+  $('followBtn').onclick = () => {
+    follow = follow === b.id ? null : b.id;
+    if (follow) revealAbove(b.lat, b.lon);
+    renderBusSheet(st);
+  };
+}
+
+/* ----- stop + arrivals ----- */
+function openStop(group) {
+  if (!group || !group.length) return;
+  const lat = group.reduce((a, g) => a + g[1], 0) / group.length, lon = group.reduce((a, g) => a + g[2], 0) / group.length;
+  if (stopHighlight) overlay.removeLayer(stopHighlight);
+  stopHighlight = L.circleMarker([lat, lon], { radius: 10, color: '#17171c', weight: 3, fillColor: '#fff', fillOpacity: 1, interactive: false }).addTo(overlay);
+  openSheet({ type: 'stop', ids: group.map((g) => g[4]), name: group[0][0], lat, lon, data: null, loading: true });
+  revealAbove(lat, lon, Math.max(map.getZoom(), 16));
+  loadArrivals(sheetState);
+}
+async function loadArrivals(st) {
+  try {
+    const r = await fetch('/api/arrivals?s=' + encodeURIComponent(st.ids.join(',')), { cache: 'no-store' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    if (sheetState !== st) return;
+    st.data = data; st.error = false;
+  } catch {
+    if (sheetState !== st) return;
+    st.error = true;
+  }
+  st.loading = false;
+  renderStopSheet(st);
+}
+const stopFav = (st) => ({ t: 's', ids: st.ids, name: st.name, lat: st.lat, lon: st.lon });
+function renderStopSheet(st) {
+  $('sBadge').innerHTML = '<span class="badge stop">Stop</span>';
+  $('sTitle').textContent = st.name;
+  $('sSub').textContent = 'Arrival estimates' + (me ? ' · ' + fmtDist(metres(me, [st.lat, st.lon])) + ' from you' : '');
+  const fav = isFav(stopFav(st));
+  sheetActions([['fav', fav ? ICONS.starOn : ICONS.star, 'Save stop', fav], ['share', ICONS.share, 'Share stop']]);
+  if (st.loading && !st.data) { $('sBody').innerHTML = '<div class="skel"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:85%"></div>'; return; }
+  const d = st.data;
+  let html = '';
+  if (st.error && !d) html += '<div class="snote warn" style="margin:8px 14px">Couldn’t load arrivals right now. Retrying with the next update.</div>';
+  if (d) {
+    const upcoming = d.arrivals.filter((a) => !a.stale);
+    const staleOnes = d.arrivals.filter((a) => a.stale);
+    if (upcoming.length) {
+      html += '<div class="sec">Next buses</div>' + upcoming.slice(0, 12).map((a) => {
+        const near = a.meters < 150;
+        return `<button class="srow" data-bus="${esc(a.bus)}">${badge(a.route, a.feeder)}
+          <span class="itxt"><div class="a">${a.ends ? 'Ends at this stop' : 'To ' + esc(a.to || '—')}</div><div class="b">${near ? 'At or near the stop' : fmtDist(a.meters) + ' away'}</div></span>
+          <span class="eta"><div class="n${near ? ' now' : ''}">${near ? 'Arriving' : Math.max(1, a.mins)}</div>${near ? '' : '<div class="u">min</div>'}</span></button>`;
+      }).join('');
+    } else if (!st.error) {
+      html += '<div class="snote" style="padding-top:12px">No buses are heading to this stop right now. Service may not have started, may have ended, or bus GPS may be offline.</div>';
+    }
+    if (staleOnes.length) {
+      html += '<div class="sec">Not updating</div>' + staleOnes.slice(0, 4).map((a) => `<button class="srow" data-bus="${esc(a.bus)}">${badge(a.route, a.feeder)}
+        <span class="itxt"><div class="a">To ${esc(a.to || '—')}</div><div class="b">Last seen ${fmtDist(a.meters)} away, ${esc(ageText(a.ts))}</div></span>
+        <span class="eta st"><div class="n">?</div></span></button>`).join('');
+    }
+    const routes = [...new Map(d.routes.map((r) => [r.rk, r])).values()];
+    if (routes.length) {
+      html += '<div class="sec">Routes at this stop</div><div class="chips">' + routes.map((r) =>
+        `<button class="badge${r.feeder ? ' feeder' : ''}" data-route="${esc(r.rk)}">${esc(r.route)}</button>`).join('') + '</div>';
+    }
+    html += '<div class="snote">Estimates use each bus’s live position along the route at typical KL traffic speed, so treat them as a guide.</div>';
+  }
+  $('sBody').innerHTML = html;
+}
+
+/* ----- near me ----- */
+function nearMe() {
+  if (!navigator.geolocation) return toast('Location isn’t available on this device.');
+  const btn = $('locBtn'); btn.classList.add('busy');
+  navigator.geolocation.getCurrentPosition((pos) => {
+    btn.classList.remove('busy');
+    me = [pos.coords.latitude, pos.coords.longitude];
+    if (meMarker) { overlay.removeLayer(meMarker); overlay.removeLayer(meCircle); }
+    meCircle = L.circle(me, { radius: Math.min(pos.coords.accuracy, 300), color: '#1a73e8', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(overlay);
+    meMarker = L.marker(me, { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, zIndexOffset: 1000 }).addTo(overlay);
+    if (sel) clearRoute();
+    openSheet({ type: 'nearby' });
+    revealAbove(me[0], me[1], 16);
+  }, (err) => {
+    btn.classList.remove('busy');
+    toast(err.code === 1 ? 'Allow location access to find stops near you.' : 'Couldn’t get your location. Try again.');
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+}
+function renderNearbySheet() {
+  $('sBadge').innerHTML = '';
+  $('sTitle').textContent = 'Stops near you';
+  sheetActions([]);
+  if (!me) return;
+  if (!catalog.stops.length) { $('sSub').textContent = ''; $('sBody').innerHTML = '<div class="snote">Stop list is still loading…</div>'; return; }
+  const seen = new Map();
+  for (const s of catalog.stops) {
+    const d = metres(me, [s[1], s[2]]);
+    if (d > 1500) continue;
+    const prev = seen.get(s._n);
+    if (!prev || d < prev.d) seen.set(s._n, { s, d });
+  }
+  const list = [...seen.values()].sort((a, b) => a.d - b.d).slice(0, 10);
+  const near = buses.filter((b) => !isStale(b) && metres(me, [b.lat, b.lon]) < 1000).length;
+  $('sSub').textContent = `${near} live bus${near === 1 ? '' : 'es'} within 1 km · tap a stop for arrivals`;
+  $('sBody').innerHTML = list.length ? list.map(({ s, d }) => stopItem(s, d)).join('')
+    : '<div class="snote" style="padding-top:12px">No Rapid KL bus stops within 1.5 km of you.</div>';
+}
+
+/* =========================================================
+   Favourites
+   ========================================================= */
+const favKey = (f) => (f.t === 'r' ? 'r:' + f.k : 's:' + [...f.ids].sort().join(','));
+const isFav = (f) => favs.some((x) => favKey(x) === favKey(f));
+function toggleFav(f) {
+  if (isFav(f)) { favs = favs.filter((x) => favKey(x) !== favKey(f)); toast('Removed from saved'); }
+  else { favs.unshift(f); toast('Saved. It’s now under the search bar.'); }
+  store.set('favs', favs);
+  renderFavs();
+}
+function renderFavs() {
+  const box = $('favs');
+  const items = favs.map((f, i) => {
+    if (f.t === 'r') {
+      const r = routeByKey.get(f.k); if (!r) return '';
+      const n = liveCount(f.k);
+      return `<button data-fav="${i}"><span class="star">★</span><b>${esc(r.short)}</b>${n ? ` <span style="color:var(--red)">${n} live</span>` : ''}</button>`;
+    }
+    return `<button data-fav="${i}"><span class="star">★</span>${esc(f.name)}</button>`;
+  }).filter(Boolean);
+  box.innerHTML = items.join('');
+  box.style.display = items.length && !sel ? 'flex' : 'none';
+}
+$('favs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-fav]'); if (!b) return;
+  const f = favs[+b.dataset.fav]; if (!f) return;
+  if (f.t === 'r') selectRoute(f.k);
+  else {
+    const group = f.ids.map((id) => stopById.get(id)).filter(Boolean);
+    openStop(group.length ? group : f.ids.map((id) => [f.name, f.lat, f.lon, [], id]));
+  }
+});
+
+/* =========================================================
+   Share links: ?route=  ?stop=  ?bus=
+   ========================================================= */
+async function share(title, params) {
+  const url = location.origin + location.pathname + '?' + new URLSearchParams(params).toString();
+  try {
+    if (navigator.share) { await navigator.share({ title, url }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(url); toast('Link copied'); }
+  catch { prompt('Copy this link', url); }
+}
+function openFromLink() {
+  const p = new URLSearchParams(location.search);
+  if (![...p.keys()].length) return false;
+  history.replaceState(null, '', location.pathname);
+  const route = p.get('route'), stop = p.get('stop'), bus = p.get('bus');
+  if (route && routeByKey.has(route)) { selectRoute(route); return true; }
+  if (stop) {
+    const group = stop.split(',').map((id) => stopById.get(id)).filter(Boolean);
+    if (group.length) { openStop(group); return true; }
+  }
+  if (bus) {
+    const b = busById.get(bus);
+    if (!b) { toast('That bus isn’t reporting right now.'); return false; }
+    const go = () => { openBus(b.id); follow = b.id; renderSheet(); };
+    if (routeByKey.has(b.rk)) selectRoute(b.rk, b.d != null ? b.d : 'all').then(go); else go();
+    return true;
+  }
+  return false;
+}
+
+/* =========================================================
+   Start
+   ========================================================= */
 (async function start() {
   $('q').placeholder = 'Loading routes…';
   await Promise.all([refresh(), loadCatalog()]);
-  const saved = store.get('route');
-  if (saved && routeByKey.has(saved)) selectRoute(saved);
-  else renderBuses();
-  refreshTimer = setInterval(refresh, 30000);
-  setInterval(() => { if (buses.length) renderBuses(); }, 15000); // re-evaluate stale state between fetches
+  renderFavs();
+  if (!openFromLink()) {
+    const saved = store.get('route');
+    if (saved && routeByKey.has(saved)) selectRoute(saved);
+    else renderBuses();
+  }
+  setInterval(refresh, 30000);
+  setInterval(() => { if (buses.length) { renderBuses(); if (sheetState && sheetState.type === 'bus') renderSheet(); } }, 15000);
 })();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>
 </html>

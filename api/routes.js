@@ -14,7 +14,7 @@ module.exports = async (req, res) => {
       k: req.query.k, short: r.short, long: r.long, color: r.color,
       dirs: [...r.dirs].sort((a, b) => a[0] - b[0]).map(([d, dir]) => ({
         d, to: dir.headsign, line: dir.line || [],
-        stops: (dir.stops || []).map((st) => [st.name, +st.lat.toFixed(5), +st.lon.toFixed(5)]),
+        stops: (dir.stops || []).map((st) => [st.name, +st.lat.toFixed(5), +st.lon.toFixed(5), `${cat}|${st.id}`]),
       })),
     });
   } catch (e) {
