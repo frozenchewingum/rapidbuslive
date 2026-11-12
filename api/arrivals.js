@@ -10,6 +10,19 @@ const OFF_ROUTE_M = 400;      // ignore buses this far from the route line
 const MAX_AHEAD_M = 25000;    // ignore buses more than 25 km away along the route
 const STALE_SEC = 120;
 const MAX_ROUTES = 10;        // cap live lookups per stop
+const TERMINAL_M = 400;       // within this distance of the route's first stop counts as "at the terminal"
+const MAX_EXTRAP_KMH = 40;    // cap speed used to move a bus forward from its last report
+
+// Remember where each bus was last seen moving (per warm instance), for buses that report no speed.
+const lastMove = new Map();   // bus id -> { lat, lon, since }
+function stillFor(b, now) {
+  const p = lastMove.get(b.id);
+  if (!p || Math.hypot((b.lat - p.lat) * 110574, (b.lon - p.lon) * 111100) > 40) {
+    lastMove.set(b.id, { lat: b.lat, lon: b.lon, since: b.ts || now });
+    return 0;
+  }
+  return (b.ts || now) - p.since;
+}
 
 module.exports = async (req, res) => {
   const ids = String(req.query.s || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 6);
@@ -53,19 +66,46 @@ module.exports = async (req, res) => {
         if (b.d !== d || seen.has(b.id + key)) continue;
         const pr = project(g, b.lat, b.lon);
         if (pr.dist > OFF_ROUTE_M) continue;
-        const ahead = stopAlong - pr.along;
-        if (ahead < -60 || ahead > MAX_AHEAD_M) continue;
+        const rawAhead = stopAlong - pr.along;
+        if (rawAhead < -60 || rawAhead > MAX_AHEAD_M) continue;
         seen.add(b.id + key);
+        const age = b.ts ? Math.max(0, now - b.ts) : 0;
+        if (age > STALE_SEC || b.off) continue;   // only active buses
+
+        // Waiting at the starting terminal: near the first stop and not moving.
+        const fromStart = pr.along - (g.stopAlong[0] || 0);
+        const still = b.kmh != null ? b.kmh < 3 : stillFor(b, now) >= 120;
+        const waiting = fromStart < TERMINAL_M && still && idx > 0;
+        const waitingHere = fromStart < TERMINAL_M && still && idx === 0;
+
+        // Move the bus forward by how far it has probably gone since its last report.
+        let ahead = rawAhead;
+        if (!waiting && !waitingHere && age > 0) {
+          const mPerMin = b.kmh != null && b.kmh >= 3 ? Math.min(b.kmh, MAX_EXTRAP_KMH) * 1000 / 60 : PACE_M_PER_MIN;
+          ahead -= mPerMin * age / 60;
+        }
         const meters = Math.max(0, Math.round(ahead));
-        const stale = b.ts ? now - b.ts > STALE_SEC : false;
-        if (stale || b.off) continue;   // only active buses
-        arrivals.push({ rk, route: route.short, feeder: cat === 'rapid-bus-mrtfeeder', d, to: dir.headsign, bus: b.id, plate: b.plate, meters, mins: Math.round(meters / PACE_M_PER_MIN), stale, ts: b.ts, ends: idx === dir.stops.length - 1, src: b.src });
-        if (!stale) served.get(key).hasLive = true;
+        arrivals.push({
+          rk, route: route.short, feeder: cat === 'rapid-bus-mrtfeeder', d, to: dir.headsign, bus: b.id, plate: b.plate,
+          meters, mins: Math.round(meters / PACE_M_PER_MIN), ts: b.ts, age,
+          waiting: waiting || undefined, waitingHere: waitingHere || undefined,
+          terminal: waiting || waitingHere ? dir.stops[0].name : undefined,
+          ends: idx === dir.stops.length - 1, src: b.src,
+        });
+        served.get(key).hasLive = true;
       }
     }
-    arrivals.sort((a, b) => a.stale - b.stale || a.meters - b.meters);
+    // Moving buses first by distance; buses still waiting at a terminal after them.
+    arrivals.sort((a, b) => (!!a.waiting - !!b.waiting) || a.meters - b.meters);
+    // The same physical bus can appear under two route entries (e.g. same number in two categories): keep one.
+    const once = new Set();
+    const unique = arrivals.filter((a) => {
+      const k = String(a.plate || a.bus).toUpperCase().replace(/[^A-Z0-9]/g, '') + '#' + a.to;
+      if (once.has(k)) return false;
+      once.add(k); return true;
+    });
     res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=30');
-    res.status(200).json({ now, stop: stopName, arrivals: arrivals.slice(0, 30), routes: [...served.values()] });
+    res.status(200).json({ now, stop: stopName, arrivals: unique.slice(0, 30), routes: [...served.values()] });
   } catch (e) {
     res.setHeader('Cache-Control', 'no-store');
     res.status(502).json({ error: String(e.message || e) });

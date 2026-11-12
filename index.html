@@ -120,7 +120,7 @@
   .eta .n { font-size:18px; font-weight:800; color:var(--ink); }
   .eta .n.now { color:var(--green); font-size:15px; }
   .eta .u { font-size:12px; color:var(--muted); }
-  .eta.st .n { color:var(--stale); font-size:15px; }
+  .eta.wait .n { color:var(--muted); font-size:16px; }
   .snote { font-size:12.5px; color:var(--muted); padding:8px 14px 0; line-height:1.45; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; padding:6px 14px 4px; }
   .facts { padding:8px 14px; margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:14px; }
@@ -683,20 +683,25 @@ function renderStopSheet(st) {
     const upcoming = d.arrivals.filter((a) => !a.stale && !a.off);
     if (upcoming.length) {
       html += '<div class="sec">Next buses</div>' + upcoming.slice(0, 12).map((a) => {
+        const head = `<button class="srow" data-bus="${esc(a.bus)}">${badge(a.route, a.feeder)}
+          <span class="itxt"><div class="a">${a.ends ? 'Ends at this stop' : 'To ' + esc(a.to || '—')}</div>`;
+        if (a.waitingHere) return head + `<div class="b">Waiting here · leaves when ready</div></span>
+          <span class="eta wait"><div class="n">Waiting</div></span></button>`;
+        if (a.waiting) return head + `<div class="b">Not left ${esc(a.terminal)} yet</div></span>
+          <span class="eta wait"><div class="n">${Math.max(1, a.mins)}+</div><div class="u">min</div></span></button>`;
         const near = a.meters < 150;
-        return `<button class="srow" data-bus="${esc(a.bus)}">${badge(a.route, a.feeder)}
-          <span class="itxt"><div class="a">${a.ends ? 'Ends at this stop' : 'To ' + esc(a.to || '—')}</div><div class="b">${near ? 'At or near the stop' : fmtDist(a.meters) + ' away'}</div></span>
+        return head + `<div class="b">${near ? 'At or near the stop' : '~' + fmtDist(a.meters) + ' away'}</div></span>
           <span class="eta"><div class="n${near ? ' now' : ''}">${near ? 'Arriving' : Math.max(1, a.mins)}</div>${near ? '' : '<div class="u">min</div>'}</span></button>`;
       }).join('');
     } else if (!st.error) {
       html += '<div class="snote" style="padding-top:12px">No buses are heading to this stop right now. Service may not have started, may have ended, or bus GPS may be offline.</div>';
     }
-    const routes = [...new Map(d.routes.map((r) => [r.rk, r])).values()];
+    const routes = [...new Map(d.routes.map((r) => [r.route + (r.feeder ? 'f' : ''), r])).values()];
     if (routes.length) {
       html += '<div class="sec">Routes at this stop</div><div class="chips">' + routes.map((r) =>
         `<button class="badge${r.feeder ? ' feeder' : ''}" data-route="${esc(r.rk)}">${esc(r.route)}</button>`).join('') + '</div>';
     }
-    html += '<div class="snote">Estimates use each bus’s live position along the route at typical KL traffic speed, so treat them as a guide.</div>';
+    html += '<div class="snote">Estimates use each bus’s live position along the route at typical KL traffic speed, so treat them as a guide. “10+ min” means the bus is still waiting at its starting point.</div>';
   }
   $('sBody').innerHTML = html;
 }
