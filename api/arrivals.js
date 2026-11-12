@@ -58,6 +58,7 @@ module.exports = async (req, res) => {
         seen.add(b.id + key);
         const meters = Math.max(0, Math.round(ahead));
         const stale = b.ts ? now - b.ts > STALE_SEC : false;
+        if (stale || b.off) continue;   // only active buses
         arrivals.push({ rk, route: route.short, feeder: cat === 'rapid-bus-mrtfeeder', d, to: dir.headsign, bus: b.id, plate: b.plate, meters, mins: Math.round(meters / PACE_M_PER_MIN), stale, ts: b.ts, ends: idx === dir.stops.length - 1, src: b.src });
         if (!stale) served.get(key).hasLive = true;
       }

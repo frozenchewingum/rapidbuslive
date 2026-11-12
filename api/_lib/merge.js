@@ -92,6 +92,7 @@ async function routeLive(rk) {
       kmh: r.speed != null && r.speed !== '' ? Math.round(+r.speed) : null,
       ts: ts || (match && match.ts) || null,
       src: match ? 'both' : 'kiosk',
+      off: String(r.engine_status) === '0' || undefined,   // engine off = not in service
     });
   }
   for (const b of open) if (!used.has(b.id)) out.push({ ...b, src: 'open' });

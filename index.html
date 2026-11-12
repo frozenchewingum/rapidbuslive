@@ -78,18 +78,19 @@
   .warn { color:var(--amber) !important; background:var(--amberbg); border-radius:8px; padding:8px 10px; }
 
   /* ----- map markers ----- */
-  .bus { position:relative; }
-  .bus .pin { position:absolute; inset:0; border-radius:50%; background:var(--c); border:2.5px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.35);
-              display:flex; align-items:center; justify-content:center; color:#fff; font:800 11px/1 system-ui,sans-serif; letter-spacing:-.3px; }
-  .bus .arrow { position:absolute; left:50%; top:50%; width:0; height:0; margin-left:-6px; margin-top:-29px;
-                border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:9px solid var(--c); transform-origin:6px 29px; }
-  .bus.stale .pin { background:#fff; color:var(--stale); border:2.5px dashed var(--stale); box-shadow:none; }
-  .bus.stale .arrow { display:none; }
-  .bus.focus .pin { box-shadow:0 0 0 5px rgba(23,23,28,.3), 0 1px 5px rgba(0,0,0,.35); }
+  /* bus marker: a pill with a bus glyph, route number and heading arrow.
+     Leaflet positions .leaflet-marker-icon absolutely; never override its position. */
+  .bus .tag { box-sizing:border-box; width:100%; height:100%; display:flex; align-items:center; justify-content:center; gap:3px;
+              padding:0 5px; border-radius:8px; background:var(--c); color:#fff; border:2px solid #fff;
+              box-shadow:0 1px 4px rgba(0,0,0,.4); font:800 12px/1 system-ui,-apple-system,sans-serif; letter-spacing:-.2px; white-space:nowrap; }
+  .bus .tag svg { flex:none; display:block; }
+  .bus .tag .hd { width:11px; height:11px; }
+  .bus.focus .tag { box-shadow:0 0 0 4px rgba(23,23,28,.35), 0 1px 4px rgba(0,0,0,.4); }
   .marker-cluster { background:rgba(215,25,45,.18); border-radius:50%; }
   .marker-cluster div { width:34px; height:34px; margin:3px; border-radius:50%; background:var(--red); color:#fff; font:700 12px/34px system-ui,sans-serif; text-align:center; }
   .me { width:18px; height:18px; border-radius:50%; background:#1a73e8; border:3px solid #fff; box-shadow:0 0 0 2px rgba(26,115,232,.35), 0 1px 4px rgba(0,0,0,.3); }
 
+  .leaflet-bottom.leaflet-left .legend { margin-bottom:40px; }
   .legend { background:rgba(255,255,255,.95); border-radius:10px; padding:7px 10px; font-size:12px; color:var(--muted); box-shadow:0 1px 6px rgba(0,0,0,.15); line-height:1.7; }
   .legend i { display:inline-block; width:11px; height:11px; border-radius:50%; vertical-align:-1px; margin-right:5px; }
   .legend .s { background:#fff; border:2px dashed var(--stale); }
@@ -227,6 +228,7 @@ let favs = store.get('favs', []); // [{t:'r', k} | {t:'s', ids, name, lat, lon}]
 
 const serverNow = () => Date.now() / 1000 + clockOffset;
 const isStale = (b) => b.ts && serverNow() - b.ts > STALE_SEC;
+const isActive = (b) => !b.off && !isStale(b);   // inactive buses are hidden everywhere
 function ageText(ts) {
   if (!ts) return 'unknown';
   const s = Math.max(0, Math.round(serverNow() - ts));
@@ -237,7 +239,7 @@ function ageText(ts) {
 let liveCounts = new Map();
 function countLive() {
   liveCounts = new Map();
-  for (const b of buses) if (!isStale(b)) for (const key of [b.rk, b.rk + '#' + b.d]) liveCounts.set(key, (liveCounts.get(key) || 0) + 1);
+  for (const b of buses) if (isActive(b)) for (const key of [b.rk, b.rk + '#' + b.d]) liveCounts.set(key, (liveCounts.get(key) || 0) + 1);
 }
 const liveCount = (k, d) => liveCounts.get(d == null ? k : k + '#' + d) || 0;
 const badge = (short, feeder) => `<span class="badge${feeder ? ' feeder' : ''}">${esc(short)}</span>`;
@@ -263,12 +265,13 @@ const legend = L.control({ position: 'bottomleft' });
 legend.onAdd = () => { const d = L.DomUtil.create('div', 'legend'); d.id = 'legend'; d.innerHTML = legendHtml(); return d; };
 legend.addTo(map);
 function legendHtml() {
-  const live = sel && sel.data
+  // Only needed when a route is open: explains the two direction colours.
+  return sel && sel.data && sel.data.dirs.length > 1
     ? sel.data.dirs.map((d) => `<div><i style="background:${DIR_COLORS[d.d] || DIR_COLORS[0]}"></i>To ${esc(d.to || 'destination')}</div>`).join('')
-    : `<div><i style="background:var(--red)"></i>Live bus</div>`;
-  return live + `<div><i class="s"></i>No update for 2+ min</div>`;
+    : '';
 }
-const legendUpdate = () => { const l = $('legend'); if (l) l.innerHTML = legendHtml(); };
+const legendUpdate = () => { const l = $('legend'); if (l) { l.innerHTML = legendHtml(); l.style.display = l.innerHTML ? '' : 'none'; } };
+legendUpdate();
 
 const locCtl = L.control({ position: 'topright' });
 locCtl.onAdd = () => {
@@ -287,26 +290,29 @@ map.on('dragstart', () => { if (follow) { follow = null; renderSheet(); } });
    Bus markers
    ========================================================= */
 function busColor(b) { return mode === 'route' ? (DIR_COLORS[b.d] || DIR_COLORS[0]) : 'var(--red)'; }
+const BUS_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="#fff"><path d="M5 4.5C5 3.1 6.6 2 12 2s7 1.1 7 2.5V17a1.5 1.5 0 0 1-1 1.4V20a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1.5H9V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-1.6A1.5 1.5 0 0 1 5 17V4.5Zm2 1.5v5h10V6H7Zm.8 8.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm8.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"/></svg>';
 function busIcon(b) {
-  const stale = isStale(b);
+  const label = String(b.route || '?').slice(0, 6);
+  const hasHd = b.bearing != null;
   const focus = sheetState && sheetState.type === 'bus' && sheetState.id === b.id;
-  const arrow = b.bearing != null && !stale ? `<div class="arrow" style="transform:rotate(${b.bearing}deg)"></div>` : '';
+  const w = Math.round(30 + label.length * 7.6 + (hasHd ? 14 : 0)), h = 26;
+  const hd = hasHd ? `<svg class="hd" viewBox="0 0 12 12" style="transform:rotate(${b.bearing}deg)"><path d="M6 0.5 11 11 6 8.4 1 11Z" fill="#fff"/></svg>` : '';
   return L.divIcon({
-    className: 'bus' + (stale ? ' stale' : '') + (focus ? ' focus' : ''),
-    html: `<div style="--c:${busColor(b)}">${arrow}<div class="pin">${esc(String(b.route || '?').slice(0, 5))}</div></div>`,
-    iconSize: [36, 36], iconAnchor: [18, 18],
+    className: 'bus' + (focus ? ' focus' : ''),
+    html: `<div class="tag" style="--c:${busColor(b)}">${BUS_SVG}<span>${esc(label)}</span>${hd}</div>`,
+    iconSize: [w, h], iconAnchor: [w / 2, h / 2],
   });
 }
 function renderBuses() {
   countLive();
   const newMode = sel ? 'route' : 'all';
   if (newMode !== mode) { cluster.clearLayers(); routeBusLayer.clearLayers(); markers.clear(); mode = newMode; }
-  const shown = sel ? buses.filter((b) => b.rk === sel.k && (sel.dir === 'all' || b.d === sel.dir)) : buses;
+  const shown = buses.filter((b) => isActive(b) && (!sel || (b.rk === sel.k && (sel.dir === 'all' || b.d === sel.dir))));
   const keep = new Set(), added = [];
   const focusId = sheetState && sheetState.type === 'bus' ? sheetState.id : null;
   for (const b of shown) {
     keep.add(b.id);
-    const sig = [b.bearing, isStale(b), b.d, b.route, mode, focusId === b.id].join('|');
+    const sig = [b.bearing, b.d, b.route, mode, focusId === b.id].join('|');
     let e = markers.get(b.id);
     if (!e) {
       const m = L.marker([b.lat, b.lon], { icon: busIcon(b), keyboard: false });
@@ -329,7 +335,7 @@ function renderBuses() {
   if (sel) renderRouteBar();
 }
 function updateSummary() {
-  const live = buses.filter((b) => !isStale(b)).length;
+  const live = buses.filter(isActive).length;
   $('summary').innerHTML = buses.length ? `<b style="color:var(--ink)">${live.toLocaleString()}</b> buses live<br>${esc(lastUpdated)}` : esc(lastUpdated || 'Loading…');
 }
 
@@ -526,10 +532,8 @@ function renderRouteBar() {
   if ($('dirs').innerHTML !== dirHtml) $('dirs').innerHTML = dirHtml;
   const msg = $('routeMsg');
   const shownLive = liveCount(sel.k, sel.dir === 'all' ? null : sel.dir);
-  const shownAll = buses.filter((b) => b.rk === sel.k && (sel.dir === 'all' || b.d === sel.dir)).length;
   if (!buses.length) { msg.className = ''; msg.textContent = ''; }
-  else if (!shownAll) { msg.className = 'warn'; msg.textContent = 'No buses are reporting on this route right now. Service may not have started yet, may have ended, or the bus GPS may be offline.'; }
-  else if (!shownLive) { msg.className = 'warn'; msg.textContent = 'Buses on this route haven’t reported for over 2 minutes, so their positions may be out of date.'; }
+  else if (!shownLive) { msg.className = 'warn'; msg.textContent = 'No buses are active on this route right now. Service may not have started yet, may have ended, or the bus GPS may be offline.'; }
   else { msg.className = ''; msg.textContent = 'Tap a stop for arrival estimates, or a bus for details.'; }
 }
 $('dirs').addEventListener('click', (e) => {
@@ -615,14 +619,14 @@ function renderBusSheet(st) {
     $('sBody').innerHTML = '<div class="snote">This bus has stopped sending its location. It may have finished its trip.</div>';
     sheetActions([]); return;
   }
-  const stale = isStale(b);
+  const stale = !isActive(b);
   $('sBadge').innerHTML = badge(b.route || '?', r && r.feeder);
   $('sTitle').textContent = b.to ? 'To ' + b.to : (r ? r.long : 'Route ' + b.route);
   $('sSub').textContent = r && b.to ? r.long : (r && r.feeder ? 'MRT feeder' : '');
   sheetActions([['share', ICONS.share, 'Share this bus']]);
-  const status = stale ? 'Not updating' : b.kmh == null ? 'Live' : b.kmh < 3 ? 'Stopped' : `Moving · ${b.kmh} km/h`;
+  const status = b.off ? 'Engine off' : stale ? 'Not updating' : b.kmh == null ? 'Live' : b.kmh < 3 ? 'Stopped' : `Moving · ${b.kmh} km/h`;
   $('sBody').innerHTML = `
-    ${stale ? '<div class="snote warn" style="margin:8px 14px 0">No update for over 2 minutes. The bus may have moved or ended its trip.</div>' : ''}
+    ${stale ? '<div class="snote warn" style="margin:8px 14px 0">This bus has stopped reporting, so it’s hidden from the map. It may have ended its trip.</div>' : ''}
     <dl class="facts">
       <dt>Status</dt><dd>${esc(status)}</dd>
       <dt>Location</dt><dd>Updated ${esc(ageText(b.ts))}</dd>
@@ -676,8 +680,7 @@ function renderStopSheet(st) {
   let html = '';
   if (st.error && !d) html += '<div class="snote warn" style="margin:8px 14px">Couldn’t load arrivals right now. Retrying with the next update.</div>';
   if (d) {
-    const upcoming = d.arrivals.filter((a) => !a.stale);
-    const staleOnes = d.arrivals.filter((a) => a.stale);
+    const upcoming = d.arrivals.filter((a) => !a.stale && !a.off);
     if (upcoming.length) {
       html += '<div class="sec">Next buses</div>' + upcoming.slice(0, 12).map((a) => {
         const near = a.meters < 150;
@@ -687,11 +690,6 @@ function renderStopSheet(st) {
       }).join('');
     } else if (!st.error) {
       html += '<div class="snote" style="padding-top:12px">No buses are heading to this stop right now. Service may not have started, may have ended, or bus GPS may be offline.</div>';
-    }
-    if (staleOnes.length) {
-      html += '<div class="sec">Not updating</div>' + staleOnes.slice(0, 4).map((a) => `<button class="srow" data-bus="${esc(a.bus)}">${badge(a.route, a.feeder)}
-        <span class="itxt"><div class="a">To ${esc(a.to || '—')}</div><div class="b">Last seen ${fmtDist(a.meters)} away, ${esc(ageText(a.ts))}</div></span>
-        <span class="eta st"><div class="n">?</div></span></button>`).join('');
     }
     const routes = [...new Map(d.routes.map((r) => [r.rk, r])).values()];
     if (routes.length) {
@@ -735,7 +733,7 @@ function renderNearbySheet() {
     if (!prev || d < prev.d) seen.set(s._n, { s, d });
   }
   const list = [...seen.values()].sort((a, b) => a.d - b.d).slice(0, 10);
-  const near = buses.filter((b) => !isStale(b) && metres(me, [b.lat, b.lon]) < 1000).length;
+  const near = buses.filter((b) => isActive(b) && metres(me, [b.lat, b.lon]) < 1000).length;
   $('sSub').textContent = `${near} live bus${near === 1 ? '' : 'es'} within 1 km · tap a stop for arrivals`;
   $('sBody').innerHTML = list.length ? list.map(({ s, d }) => stopItem(s, d)).join('')
     : '<div class="snote" style="padding-top:12px">No Rapid KL bus stops within 1.5 km of you.</div>';
