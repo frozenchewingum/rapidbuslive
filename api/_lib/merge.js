@@ -1,50 +1,25 @@
 // Merge the open GTFS-R feed with the MyRapid Kiosk feed for one route.
 // Buses are matched by number plate; Kiosk buses get direction from the open feed when matched,
 // otherwise from their heading compared with each direction's route line.
-const { full, base, liveBuses, geom, project } = require('./gtfs');
+const { full, base, liveBuses, assignBranch } = require('./gtfs');
 const { kioskCode, snapshot, myt } = require('./kiosk');
 
 const MAX_AGE = 20 * 60;
 const plateKey = (p) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const angDiff = (a, b) => { const d = Math.abs(((a - b) % 360) + 360) % 360; return d > 180 ? 360 - d : d; };
-
-function segBearing(g, seg) {
-  const a = g.pts[Math.max(0, seg - 1)], b = g.pts[Math.max(1, seg)];
-  if (!a || !b) return null;
-  return (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI + 360) % 360; // x=east, y=north
-}
-
 // Learned mapping from Kiosk "dir" codes to GTFS direction, per route (votes from confident inferences).
 const dirVotes = new Map();
 function vote(rk, code, d) {
   const k = rk + '|' + code;
-  const v = dirVotes.get(k) || [0, 0];
-  v[d]++; dirVotes.set(k, v);
+  const v = dirVotes.get(k) || {};
+  v[d] = (v[d] || 0) + 1; dirVotes.set(k, v);
 }
 function voted(rk, code) {
   const v = dirVotes.get(rk + '|' + code);
   if (!v) return null;
-  const n = v[0] + v[1];
+  const n = Object.values(v).reduce((a, b) => a + b, 0);
   if (n < 3) return null;
-  if (v[0] / n >= 0.8) return 0;
-  if (v[1] / n >= 0.8) return 1;
+  for (const [bi, c] of Object.entries(v)) if (c / n >= 0.8) return +bi;
   return null;
-}
-
-function inferDir(route, lat, lon, angle) {
-  if (!route || angle == null || !route.dirs) return null;
-  let best = null;
-  for (const [d, dir] of route.dirs) {
-    if (!dir.line || dir.line.length < 2) continue;
-    const g = geom(dir);
-    const pr = project(g, lat, lon);
-    if (pr.dist > 200) continue;
-    const sb = segBearing(g, pr.seg);
-    if (sb == null) continue;
-    const diff = angDiff(angle, sb);
-    if (diff < 70 && (!best || diff < best.diff)) best = { d, diff };
-  }
-  return best ? best.d : null;
 }
 
 async function routeLive(rk) {
@@ -76,17 +51,19 @@ async function routeLive(rk) {
     if (match) used.add(match.id);
     // Prefer whichever source reported more recently for position.
     if (match && match.ts && ts && match.ts > ts) { out.push({ ...match, src: 'both' }); continue; }
-    let d = match && match.d != null ? match.d : inferDir(route, lat, lon, angle);
+    // Direction ("branch") and destination: from the open feed when matched, else from position + heading.
+    let a = match && match.d != null ? { rd: match.rd, bi: match.d, to: match.to } : assignBranch(route, lat, lon, angle, null);
     const dirCode = r.dir != null ? String(r.dir) : null;
-    if (d != null && dirCode != null && (!match || match.d == null)) vote(rk, dirCode, d);
-    if (d == null && dirCode != null) d = voted(rk, dirCode);
-    if (d == null && route && route.dirs.size === 1) d = [...route.dirs.keys()][0];
-    const dir = route && d != null ? route.dirs.get(d) : null;
+    if (a.bi != null && dirCode != null && !(match && match.d != null)) vote(rk, dirCode, a.bi);
+    if (a.bi == null && dirCode != null) {
+      const bi = voted(rk, dirCode);
+      if (bi != null && route && route.branches && route.branches[bi]) a = { rd: route.branches[bi].d, bi, to: route.branches[bi].to };
+    }
     out.push({
       id: match ? match.id : 'K' + (pk || `${lat},${lon}`),
       plate: r.bus_no || (match && match.plate) || '',
-      rk, route: short, d,
-      to: dir ? dir.headsign : '',
+      rk, route: short, d: a.bi, rd: a.rd,
+      to: a.to || '',
       lat, lon,
       bearing: angle,
       kmh: r.speed != null && r.speed !== '' ? Math.round(+r.speed) : null,
@@ -103,4 +80,4 @@ async function routeLive(rk) {
   };
 }
 
-module.exports = { routeLive, inferDir };
+module.exports = { routeLive };

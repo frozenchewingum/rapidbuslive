@@ -2,7 +2,7 @@
 // ?s=<category>|<stop_id>[,<category>|<stop_id>...]
 // Uses the open feed + MyRapid Kiosk feed for each route at the stop.
 // Estimate = distance along the route line from the bus to the stop, at a typical KL bus pace.
-const { CATS, full, geom, project } = require('./_lib/gtfs');
+const { CATS, full, geom, projectHeading, branchOfStop } = require('./_lib/gtfs');
 const { routeLive } = require('./_lib/merge');
 
 const PACE_M_PER_MIN = 250;   // ~15 km/h average including stops and traffic
@@ -41,8 +41,8 @@ module.exports = async (req, res) => {
       for (const rid of stop.routes) {
         const route = s.routes.get(rid);
         for (const [d, dir] of route.dirs) {
-          const idx = (dir.stops || []).indexOf(stop);
-          if (idx >= 0) pairs.push({ rk: `${cat}|${rid}`, cat, route, d, dir, idx });
+          // a stop can appear twice on a loop (once each way); each occurrence is its own pairing
+          (dir.stops || []).forEach((st, idx) => { if (st === stop) pairs.push({ rk: `${cat}|${rid}`, cat, route, d, dir, idx }); });
         }
       }
     }
@@ -57,15 +57,18 @@ module.exports = async (req, res) => {
     // 3. Project each bus onto the line and compare with the stop's position
     const arrivals = [], served = new Map(), seen = new Set();
     for (const { rk, cat, route, d, dir, idx } of pairs) {
-      const key = rk + '#' + d;
-      if (!served.has(key)) served.set(key, { rk, route: route.short, feeder: cat === 'rapid-bus-mrtfeeder', d, to: dir.headsign, last: idx === dir.stops.length - 1, hasLive: false });
+      // destination shown at this stop = the stretch of the route the stop is on
+      const leg = branchOfStop(route, d, idx);
+      const bi = leg ? leg.bi : d, to = leg ? leg.to : dir.headsign;
+      const key = rk + '#' + bi + '#' + idx;
+      if (!served.has(key)) served.set(key, { rk, route: route.short, feeder: cat === 'rapid-bus-mrtfeeder', d: bi, to, last: idx === dir.stops.length - 1, hasLive: false });
       const g = geom(dir);
       if (g.pts.length < 2) continue;
       const stopAlong = g.stopAlong[idx];
       for (const b of liveByRk.get(rk) || []) {
-        if (b.d !== d || seen.has(b.id + key)) continue;
-        const pr = project(g, b.lat, b.lon);
-        if (pr.dist > OFF_ROUTE_M) continue;
+        if (b.rd !== d || seen.has(b.id + key)) continue;
+        const pr = projectHeading(g, b.lat, b.lon, b.bearing);
+        if (!pr || pr.dist > OFF_ROUTE_M || pr.headingOk === false) continue;
         const rawAhead = stopAlong - pr.along;
         if (rawAhead < -60 || rawAhead > MAX_AHEAD_M) continue;
         seen.add(b.id + key);
@@ -86,9 +89,11 @@ module.exports = async (req, res) => {
         }
         const meters = Math.max(0, Math.round(ahead));
         arrivals.push({
-          rk, route: route.short, feeder: cat === 'rapid-bus-mrtfeeder', d, to: dir.headsign, bus: b.id, plate: b.plate,
+          rk, route: route.short, feeder: cat === 'rapid-bus-mrtfeeder', d: bi, to, bus: b.id, plate: b.plate,
           meters, mins: Math.round(meters / PACE_M_PER_MIN), ts: b.ts, age,
           waiting: waiting || undefined, waitingHere: waitingHere || undefined,
+          // on a loop the bus may still be on the other stretch, heading somewhere else first
+          viaFirst: b.d != null && b.d !== bi && b.to && b.to !== to ? b.to : undefined,
           terminal: waiting || waitingHere ? dir.stops[0].name : undefined,
           ends: idx === dir.stops.length - 1, src: b.src,
         });

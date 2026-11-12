@@ -182,7 +182,7 @@
    Constants & helpers
    ========================================================= */
 const STALE_SEC = 120;
-const DIR_COLORS = ['#d7192d', '#1f5fd1'];
+const DIR_COLORS = ['#d7192d', '#1f5fd1', '#0f8a5f', '#8e44ad'];
 const $ = (id) => document.getElementById(id);
 const ICONS = {
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
@@ -472,7 +472,7 @@ async function selectRoute(k, dir = 'all') {
   $('routebar').style.display = 'block';
   renderRouteBar(); renderBuses(); renderFavs();
   const pts = buses.filter((b) => b.rk === k).map((b) => [b.lat, b.lon]);
-  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 15 });
+  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 15, animate: false });
   mergeRouteLive(k).then((ok) => { if (ok && sel && sel.k === k) { renderBuses(); if (sheetState) renderSheet(); } });
   try {
     const res = await fetch('/api/routes?k=' + encodeURIComponent(k));
@@ -482,7 +482,7 @@ async function selectRoute(k, dir = 'all') {
     sel.data = data;
     drawRoute(); renderRouteBar();
     const line = data.dirs.flatMap((d) => d.line);
-    if (line.length) map.fitBounds(L.latLngBounds(line), { padding: [30, 30] });
+    if (line.length) { map.stop(); map.fitBounds(L.latLngBounds(line), { padding: [30, 30] }); }
   } catch {
     if (sel && sel.k === k) toast('Couldn’t load the route line. Live buses are still shown.');
   }
@@ -690,7 +690,7 @@ function renderStopSheet(st) {
         if (a.waiting) return head + `<div class="b">Not left ${esc(a.terminal)} yet</div></span>
           <span class="eta wait"><div class="n">${Math.max(1, a.mins)}+</div><div class="u">min</div></span></button>`;
         const near = a.meters < 150;
-        return head + `<div class="b">${near ? 'At or near the stop' : '~' + fmtDist(a.meters) + ' away'}</div></span>
+        return head + `<div class="b">${near ? 'At or near the stop' : '~' + fmtDist(a.meters) + ' away'}${a.viaFirst ? ' · goes to ' + esc(a.viaFirst) + ' first' : ''}</div></span>
           <span class="eta"><div class="n${near ? ' now' : ''}">${near ? 'Arriving' : Math.max(1, a.mins)}</div>${near ? '' : '<div class="u">min</div>'}</span></button>`;
       }).join('');
     } else if (!st.error) {

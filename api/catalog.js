@@ -16,7 +16,9 @@ module.exports = async (req, res) => {
         short: r.short,
         long: r.long,
         feeder: cat === 'rapid-bus-mrtfeeder',
-        dirs: [...r.dirs].sort((a, b) => a[0] - b[0]).map(([d, dir]) => ({ d, to: dir.headsign })),
+        dirs: r.branches && r.branches.length
+          ? r.branches.map((L) => ({ d: L.bi, to: L.to }))
+          : [...r.dirs].sort((a, b) => a[0] - b[0]).map(([d, dir]) => ({ d, to: dir.headsign })),
       });
     }
     if (s.stops) for (const st of s.stops.values()) {
